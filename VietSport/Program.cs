@@ -3,7 +3,7 @@ using System.Windows.Forms;
 
 namespace VietSportSystem
 {
-    static class Progra
+    static class Program
     {
         [STAThread]
         static void Main()

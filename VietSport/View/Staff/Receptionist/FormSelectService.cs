@@ -76,18 +76,21 @@ namespace VietSportSystem.View.Staff.Receptionist
             {
                 conn.Open();
                 string sql = "SELECT MaDichVu, TenDichVu, DonGia, SoLuongTon FROM DichVu";
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                SqlDataReader reader = cmd.ExecuteReader();
-
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    grid.Rows.Add(
-                        reader["MaDichVu"],
-                        reader["TenDichVu"],
-                        Convert.ToDecimal(reader["DonGia"]).ToString("N0"),
-                        reader["SoLuongTon"],
-                        "0" // Mặc định số lượng mua là 0
-                    );
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            grid.Rows.Add(
+                                reader["MaDichVu"],
+                                reader["TenDichVu"],
+                                Convert.ToDecimal(reader["DonGia"]).ToString("N0"),
+                                reader["SoLuongTon"],
+                                "0" // Mặc định số lượng mua là 0
+                            );
+                        }
+                    }
                 }
             }
         }

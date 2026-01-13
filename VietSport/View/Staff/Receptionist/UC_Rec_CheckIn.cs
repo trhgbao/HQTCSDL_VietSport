@@ -54,20 +54,23 @@ namespace VietSportSystem
             AND p.TrangThaiThanhToan != N'Đã hủy'
             AND (@Key != '' OR CONVERT(date, p.GioBatDau) = CONVERT(date, GETDATE()))";
 
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@Key", "%" + keyword + "%");
-                SqlDataReader reader = cmd.ExecuteReader();
-
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    pnlList.Controls.Add(CreateBookingCard(
-                        reader["MaPhieuDat"].ToString(),
-                        reader["HoTen"].ToString(),
-                        reader["MaSan"].ToString() + " - " + reader["LoaiSan"].ToString(),
-                        DateTime.Parse(reader["GioBatDau"].ToString()),
-                        DateTime.Parse(reader["GioKetThuc"].ToString()),
-                        reader["TrangThaiThanhToan"].ToString()
-                    ));
+                    cmd.Parameters.AddWithValue("@Key", "%" + keyword + "%");
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            pnlList.Controls.Add(CreateBookingCard(
+                                reader["MaPhieuDat"].ToString(),
+                                reader["HoTen"].ToString(),
+                                reader["MaSan"].ToString() + " - " + reader["LoaiSan"].ToString(),
+                                DateTime.Parse(reader["GioBatDau"].ToString()),
+                                DateTime.Parse(reader["GioKetThuc"].ToString()),
+                                reader["TrangThaiThanhToan"].ToString()
+                            ));
+                        }
+                    }
                 }
             }
         }

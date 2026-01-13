@@ -10,7 +10,7 @@ namespace VietSportSystem
     public class UC_Rec_DirectBooking : UserControl
     {
         // Inputs
-        private TextBox txtHoTen, txtSDT, txtCMND, txtDichVu;
+        private TextBox txtHoTen, txtSDT, txtCMND;
         private DateTimePicker dtpNgay, dtpStart, dtpEnd;
         private ComboBox cboLoaiSan;
         private FlowLayoutPanel pnlSanTrong; // Danh sách sân trống bên dưới
@@ -153,39 +153,43 @@ namespace VietSportSystem
                         AND TrangThaiThanhToan != N'Đã hủy'
                     )";
 
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@Loai", cboLoaiSan.SelectedItem.ToString());
-                // Gộp ngày + giờ
-                DateTime start = dtpNgay.Value.Date + dtpStart.Value.TimeOfDay;
-                DateTime end = dtpNgay.Value.Date + dtpEnd.Value.TimeOfDay;
-
-                cmd.Parameters.AddWithValue("@Start", start);
-                cmd.Parameters.AddWithValue("@End", end);
-
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    string maSanHienTai = reader["MaSan"].ToString();
-                    string tenCoSo = reader["TenCoSo"].ToString();
-                    // --------------------------------------------------------
+                    cmd.Parameters.AddWithValue("@Loai", cboLoaiSan.SelectedItem.ToString());
+                    // Gộp ngày + giờ
+                    DateTime start = dtpNgay.Value.Date + dtpStart.Value.TimeOfDay;
+                    DateTime end = dtpNgay.Value.Date + dtpEnd.Value.TimeOfDay;
 
-                    Button btnSan = new Button
+                    cmd.Parameters.AddWithValue("@Start", start);
+                    cmd.Parameters.AddWithValue("@End", end);
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
                     {
-                        Text = maSanHienTai + "\n" + tenCoSo, // Dùng biến cục bộ
-                        Size = new Size(200, 60),
-                        BackColor = Color.LightGreen,
-                        Tag = maSanHienTai // Dùng biến cục bộ
-                    };
+                        while (reader.Read())
+                        {
+                            string maSanHienTai = reader["MaSan"].ToString();
+                            string tenCoSo = reader["TenCoSo"].ToString();
+                            // --------------------------------------------------------
 
-                    // Click chọn sân
-                    btnSan.Click += (s, args) => {
-                        foreach (Control c in pnlSanTrong.Controls) c.BackColor = Color.LightGreen;
-                        btnSan.BackColor = Color.Orange;
+                            Button btnSan = new Button
+                            {
+                                Text = maSanHienTai + "\n" + tenCoSo, // Dùng biến cục bộ
+                                Size = new Size(200, 60),
+                                BackColor = Color.LightGreen,
+                                Tag = maSanHienTai // Dùng biến cục bộ
+                            };
 
-                        btnSan.Tag = "SELECTED_" + maSanHienTai;
-                        // ---------------------
-                    };
-                    pnlSanTrong.Controls.Add(btnSan);
+                            // Click chọn sân
+                            btnSan.Click += (s, args) => {
+                                foreach (Control c in pnlSanTrong.Controls) c.BackColor = Color.LightGreen;
+                                btnSan.BackColor = Color.Orange;
+
+                                btnSan.Tag = "SELECTED_" + maSanHienTai;
+                                // ---------------------
+                            };
+                            pnlSanTrong.Controls.Add(btnSan);
+                        }
+                    }
                 }
             }
         }

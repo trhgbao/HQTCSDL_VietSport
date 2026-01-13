@@ -42,20 +42,24 @@ namespace VietSportSystem
                     WHERE p.MaKhachHang = @KH
                     ORDER BY p.GioBatDau DESC";
 
-                SqlCommand cmd = new SqlCommand(query, conn);
-                cmd.Parameters.AddWithValue("@KH", SessionData.CurrentUserID);
-
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
-                    pnlList.Controls.Add(CreateHistoryItem(
-                        reader["MaPhieuDat"].ToString(),
-                        reader["LoaiSan"].ToString(),
-                        reader["TenCoSo"].ToString(),
-                        DateTime.Parse(reader["GioBatDau"].ToString()),
-                        DateTime.Parse(reader["GioKetThuc"].ToString()),
-                        reader["TrangThaiThanhToan"].ToString()
-                    ));
+                    cmd.Parameters.AddWithValue("@KH", SessionData.CurrentUserID);
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            pnlList.Controls.Add(CreateHistoryItem(
+                                reader["MaPhieuDat"].ToString(),
+                                reader["LoaiSan"].ToString(),
+                                reader["TenCoSo"].ToString(),
+                                DateTime.Parse(reader["GioBatDau"].ToString()),
+                                DateTime.Parse(reader["GioKetThuc"].ToString()),
+                                reader["TrangThaiThanhToan"].ToString()
+                            ));
+                        }
+                    }
                 }
             }
         }

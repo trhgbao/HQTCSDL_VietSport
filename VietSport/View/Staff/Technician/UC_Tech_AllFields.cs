@@ -34,20 +34,24 @@ namespace VietSportSystem
                 conn.Open();
                 // Lấy thêm s.GhiChu
                 string sql = "SELECT MaSan, LoaiSan, TinhTrang, GhiChu, c.TenCoSo FROM SanTheThao s JOIN CoSo c ON s.MaCoSo = c.MaCoSo";
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    // Xử lý null cho GhiChu
-                    string note = reader["GhiChu"] != DBNull.Value ? reader["GhiChu"].ToString() : "";
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            // Xử lý null cho GhiChu
+                            string note = reader["GhiChu"] != DBNull.Value ? reader["GhiChu"].ToString() : "";
 
-                    pnlGrid.Controls.Add(CreateCard(
-                        reader["MaSan"].ToString(),
-                        reader["LoaiSan"].ToString(),
-                        reader["TenCoSo"].ToString(),
-                        reader["TinhTrang"].ToString(),
-                        note // <--- Truyền thêm note vào hàm CreateCard
-                    ));
+                            pnlGrid.Controls.Add(CreateCard(
+                                reader["MaSan"].ToString(),
+                                reader["LoaiSan"].ToString(),
+                                reader["TenCoSo"].ToString(),
+                                reader["TinhTrang"].ToString(),
+                                note // <--- Truyền thêm note vào hàm CreateCard
+                            ));
+                        }
+                    }
                 }
             }
         }

@@ -39,19 +39,23 @@ namespace VietSportSystem
                 FROM SanTheThao 
                 WHERE TinhTrang = N'Bảo trì'";
 
-                    SqlCommand cmd = new SqlCommand(sql, conn);
-                    SqlDataReader reader = cmd.ExecuteReader();
-                    while (reader.Read())
+                    using (SqlCommand cmd = new SqlCommand(sql, conn))
                     {
-                        // Kiểm tra null cho cột GhiChu để tránh lỗi
-                        string ghiChu = reader["GhiChu"] != DBNull.Value ? reader["GhiChu"].ToString() : "Không có mô tả";
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                // Kiểm tra null cho cột GhiChu để tránh lỗi
+                                string ghiChu = reader["GhiChu"] != DBNull.Value ? reader["GhiChu"].ToString() : "Không có mô tả";
 
-                        pnlGrid.Controls.Add(CreateDetailCard(
-                            reader["MaSan"].ToString(),
-                            reader["LoaiSan"].ToString(),
-                            ghiChu,
-                            "Xem trong ghi chú" // Vì không có cột ngày riêng
-                        ));
+                                pnlGrid.Controls.Add(CreateDetailCard(
+                                    reader["MaSan"].ToString(),
+                                    reader["LoaiSan"].ToString(),
+                                    ghiChu,
+                                    "Xem trong ghi chú" // Vì không có cột ngày riêng
+                                ));
+                            }
+                        }
                     }
                 }
             }
