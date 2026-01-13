@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Drawing;
 using System.Windows.Forms;
+using VietSportSystem.View.Staff.Receptionist;
 
 namespace VietSportSystem
 {
@@ -13,6 +14,8 @@ namespace VietSportSystem
         private DateTimePicker dtpNgay, dtpStart, dtpEnd;
         private ComboBox cboLoaiSan;
         private FlowLayoutPanel pnlSanTrong; // Danh sách sân trống bên dưới
+        private List<ServiceItem> _selectedServices = new List<ServiceItem>();
+        private Label lblDichVuSelected;
 
         private string _selectedMaKH = ""; // Nếu chọn từ tìm kiếm
 
@@ -49,7 +52,16 @@ namespace VietSportSystem
 
             pnlForm.Controls.AddRange(new Control[] { dtpNgay, cboLoaiSan, dtpStart, dtpEnd });
 
-            txtDichVu = CreateInput(pnlForm, "Dịch vụ kèm theo", 280);
+            Label lblDV = new Label { Text = "Dịch vụ kèm theo:", Location = new Point(50, 280), AutoSize = true, Font = new Font("Segoe UI", 10) };
+            pnlForm.Controls.Add(lblDV);
+
+            Button btnChonDV = new Button { Text = "➕ Chọn Dịch vụ", Location = new Point(50, 305), Size = new Size(150, 30) };
+            btnChonDV.Click += BtnChonDV_Click;
+            pnlForm.Controls.Add(btnChonDV);
+
+            lblDichVuSelected = new Label { Text = "Chưa chọn dịch vụ nào", Location = new Point(220, 310), AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Italic) };
+            pnlForm.Controls.Add(lblDichVuSelected);
+            // ------------------------------------------
 
             // BUTTONS
             Button btnCheck = new Button { Text = "Kiểm tra sân trống", Location = new Point(150, 350), Size = new Size(150, 40), BackColor = Color.Gray, ForeColor = Color.White };
@@ -70,6 +82,35 @@ namespace VietSportSystem
             this.Controls.Add(pnlForm);
             this.Controls.Add(lblList);
             this.Controls.Add(pnlSanTrong);
+        }
+
+        // 2. Thêm hàm xử lý sự kiện chọn dịch vụ
+        private void BtnChonDV_Click(object sender, EventArgs e)
+        {
+            FormSelectService frm = new FormSelectService();
+            if (frm.ShowDialog() == DialogResult.OK)
+            {
+                _selectedServices = frm.SelectedServices;
+
+                // Hiển thị danh sách ra label cho Lễ tân thấy
+                if (_selectedServices.Count > 0)
+                {
+                    string summary = "";
+                    decimal totalService = 0;
+                    foreach (var item in _selectedServices)
+                    {
+                        summary += $"{item.TenDV} (x{item.SoLuong}), ";
+                        totalService += item.ThanhTien;
+                    }
+                    lblDichVuSelected.Text = summary.TrimEnd(',', ' ') + $" | Tổng tiền DV: {totalService:N0} đ";
+                    lblDichVuSelected.ForeColor = Color.Blue;
+                }
+                else
+                {
+                    lblDichVuSelected.Text = "Chưa chọn dịch vụ nào";
+                    lblDichVuSelected.ForeColor = Color.Black;
+                }
+            }
         }
 
         private TextBox CreateInput(Panel p, string placeholder, int y)
@@ -183,7 +224,6 @@ namespace VietSportSystem
                         cmdKH.ExecuteNonQuery();
                     }
 
-                    // 3. Tạo phiếu đặt
                     string maPhieu = "TT" + DateTime.Now.ToString("ddHHmmss");
                     string sqlPhieu = @"INSERT INTO PhieuDatSan 
                                       (MaPhieuDat, MaKhachHang, MaSan, MaNhanVien, GioBatDau, GioKetThuc, TrangThaiThanhToan, KenhDat)
@@ -193,25 +233,54 @@ namespace VietSportSystem
                     cmd.Parameters.AddWithValue("@Ma", maPhieu);
                     cmd.Parameters.AddWithValue("@KH", _selectedMaKH);
                     cmd.Parameters.AddWithValue("@San", maSanChon);
-                    object valNV = SessionData.CurrentUserID;
-                    if (valNV == null) 
-                        valNV = DBNull.Value;
 
+                    // Xử lý Null cho mã nhân viên (như bạn đã sửa)
+                    object valNV = SessionData.CurrentUserID;
+                    if (valNV == null) valNV = DBNull.Value;
                     cmd.Parameters.AddWithValue("@NV", valNV);
+
                     cmd.Parameters.AddWithValue("@Start", dtpNgay.Value.Date + dtpStart.Value.TimeOfDay);
                     cmd.Parameters.AddWithValue("@End", dtpNgay.Value.Date + dtpEnd.Value.TimeOfDay);
 
-                    cmd.ExecuteNonQuery();
-                    trans.Commit();
+                    cmd.ExecuteNonQuery(); // <-- Xong phần đặt sân
 
-                    MessageBox.Show("Đặt sân thành công!");
-                    pnlSanTrong.Controls.Clear(); // Reset
+                    // =========================================================================
+                    // --- PHẦN MỚI THÊM: CẬP NHẬT KHO DỊCH VỤ ---
+                    // =========================================================================
+                    if (_selectedServices != null && _selectedServices.Count > 0)
+                    {
+                        foreach (var item in _selectedServices)
+                        {
+                            // 1. Trừ số lượng tồn trong bảng DichVu
+                            string sqlUpdateStock = "UPDATE DichVu SET SoLuongTon = SoLuongTon - @Qty WHERE MaDichVu = @MaDV";
+                            SqlCommand cmdStock = new SqlCommand(sqlUpdateStock, conn, trans); // Dùng chung transaction 'trans'
+                            cmdStock.Parameters.AddWithValue("@Qty", item.SoLuong);
+                            cmdStock.Parameters.AddWithValue("@MaDV", item.MaDV);
+                            cmdStock.ExecuteNonQuery();
+
+                            // 2. (Tùy chọn) Nếu muốn lưu chi tiết hóa đơn dịch vụ thì insert vào bảng ChiTietSuDungDichVu ở đây
+                            // Nhưng logic hiện tại chỉ yêu cầu trừ kho nên đoạn trên là đủ.
+                        }
+                    }
+                    // =========================================================================
+
+                    trans.Commit(); // Chốt tất cả thay đổi (Sân + Dịch vụ)
+
+                    MessageBox.Show("Đặt sân và Cập nhật dịch vụ thành công!");
+
+                    // --- RESET GIAO DIỆN ---
+                    pnlSanTrong.Controls.Clear();
                     _selectedMaKH = "";
                     txtHoTen.Enabled = true;
+
+                    // Reset luôn phần dịch vụ
+                    _selectedServices.Clear();
+                    lblDichVuSelected.Text = "Chưa chọn dịch vụ nào";
+                    lblDichVuSelected.ForeColor = Color.Black;
                 }
                 catch (Exception ex)
                 {
-                    trans.Rollback();
+                    trans.Rollback(); // Nếu lỗi bất cứ đâu (sân hoặc dịch vụ) -> Hủy hết
                     MessageBox.Show("Lỗi: " + ex.Message);
                 }
             }

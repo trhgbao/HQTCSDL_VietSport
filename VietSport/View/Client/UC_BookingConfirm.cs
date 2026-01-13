@@ -14,6 +14,7 @@ namespace VietSportSystem
         private DateTimePicker dtpStart, dtpEnd;
         private Label lblDuration, lblTotalPrice;
         private TextBox txtNote, txtVoucher;
+        private CheckBox chkDemoFix;
         private decimal currentTotal;
 
         public UC_BookingConfirm(MainForm main, SanInfo san)
@@ -113,11 +114,20 @@ namespace VietSportSystem
             UIHelper.StyleButton(btnApply, false);
             btnApply.Click += (s, e) => MessageBox.Show("Mã giảm giá không tồn tại!");
 
+            chkDemoFix = new CheckBox
+            {
+                Text = "Demo: Bật chế độ Fix Lỗi (Serializable)",
+                Location = new Point(20, 170),
+                AutoSize = true,
+                ForeColor = Color.DarkBlue,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold)
+            };
+
             Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 215), Size = new Size(270, 50) };
             UIHelper.StyleButton(btnConfirm, true);
             btnConfirm.Click += BtnConfirm_Click;
 
-            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, btnConfirm });
+            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkDemoFix, btnConfirm });
 
             // Add cột vào grid
             grid.Controls.Add(pnlLeft, 0, 0);
@@ -173,36 +183,35 @@ namespace VietSportSystem
         {
             if (currentTotal <= 0) { MessageBox.Show("Vui lòng chọn thời gian hợp lệ!"); return; }
 
-            using (SqlConnection conn = DatabaseHelper.GetConnection())
+            // Lấy MaSan (xử lý logic cắt chuỗi như cũ của bạn)
+            // Lưu ý: Đảm bảo MaSan đúng định dạng trong DB (ví dụ 'S005')
+            string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
+            string maKH = SessionData.CurrentUserID;
+
+            // Kiểm tra xem người dùng có tick vào chế độ Fix lỗi không
+            bool dungCheDoFix = chkDemoFix.Checked;
+
+            // Thông báo bắt đầu Demo
+            MessageBox.Show("Hệ thống đang xử lý đặt sân...\n(Sẽ giả lập độ trễ 10s để bạn kịp thao tác máy khác)", "Thông báo Demo");
+
+            // GỌI HÀM TRANSACTION TỪ DATABASE HELPER
+            // Hàm này sẽ gọi xuống Stored Procedure có WAITFOR DELAY
+            string ketQua = DatabaseHelper.DatSan_Transaction_T1(maKH, maSanThuc, dtpStart.Value, dtpEnd.Value, dungCheDoFix);
+
+            // Kiểm tra kết quả trả về từ SQL
+            if (ketQua.Contains("thành công") || ketQua.Contains("Success"))
             {
-                conn.Open();
-                try
-                {
-                    // Kiểm tra xem khung giờ này sân có bị trùng không (Logic quan trọng)
-                    // ... (Đoạn này ta làm đơn giản trước, sau này thêm Check trùng sau)
+                MessageBox.Show(ketQua, "Thành công");
 
-                    string maPhieu = "PD" + DateTime.Now.ToString("ddHHmmss");
-                    string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
-
-                    string sql = @"INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, GioBatDau, GioKetThuc, TrangThaiThanhToan, KenhDat)
-                                   VALUES (@Ma, @KH, @San, @Start, @End, N'Chưa thanh toán', 'Online')";
-
-                    SqlCommand cmd = new SqlCommand(sql, conn);
-                    cmd.Parameters.AddWithValue("@Ma", maPhieu);
-                    cmd.Parameters.AddWithValue("@KH", SessionData.CurrentUserID);
-                    cmd.Parameters.AddWithValue("@San", maSanThuc);
-                    cmd.Parameters.AddWithValue("@Start", dtpStart.Value);
-                    cmd.Parameters.AddWithValue("@End", dtpEnd.Value);
-
-                    cmd.ExecuteNonQuery();
-
-                    // Chuyển sang trang thanh toán QR
-                    _mainForm.LoadView(new UC_Payment(_mainForm, maPhieu, currentTotal));
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Lỗi: " + ex.Message);
-                }
+                // Chỉ khi thành công mới chuyển sang trang thanh toán
+                // Tạo mã phiếu tạm (hoặc lấy từ DB nếu procedure trả về, ở đây mình giả lập lại để hiện QR)
+                string maPhieuDisplay = "PD" + DateTime.Now.ToString("ddHHmmss");
+                _mainForm.LoadView(new UC_Payment(_mainForm, maPhieuDisplay, currentTotal));
+            }
+            else
+            {
+                // Trường hợp lỗi (Sân trùng, hoặc lỗi Deadlock/Update conflict)
+                MessageBox.Show(ketQua, "Thất bại - Xung đột xảy ra", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
