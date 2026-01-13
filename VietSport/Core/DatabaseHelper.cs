@@ -18,24 +18,12 @@ namespace VietSportSystem
         }
 
         // =============================================================
-        // PHẦN XỬ LÝ DEMO XUNG ĐỘT (THÊM MỚI VÀO ĐÂY)
+        // CÁC HÀM DEMO TRANSACTION CŨ (GIỮ LẠI NẾU BẠN ĐANG DÙNG)
         // =============================================================
 
-        /// <summary>
-        /// Hàm dùng cho TRANSACTION 1 (Người đặt sân)
-        /// </summary>
-        /// <param name="maKH">Mã khách hàng đặt</param>
-        /// <param name="maSan">Mã sân muốn đặt</param>
-        /// <param name="batDau">Giờ bắt đầu</param>
-        /// <param name="ketThuc">Giờ kết thúc</param>
-        /// <param name="dungBanFix">False = Chạy bản Lỗi, True = Chạy bản đã Fix</param>
         public static string DatSan_Transaction_T1(string maKH, string maSan, DateTime batDau, DateTime ketThuc, bool dungBanFix)
         {
-            // 1. Chọn tên SP dựa vào việc bạn muốn test Lỗi hay test Fix
-            // Lưu ý: Tên SP phải trùng với tên bạn đã tạo trong SQL Server ở bước trước
             string tenProcedure = dungBanFix ? "sp_DatSan_Demo_Fix" : "sp_DatSan_Demo_Loi";
-            
-            // Tạo mã phiếu tự động (ví dụ: P + số giây hiện tại)
             string maPhieu = "P" + DateTime.Now.Ticks.ToString().Substring(12);
 
             using (SqlConnection conn = GetConnection())
@@ -46,25 +34,17 @@ namespace VietSportSystem
                     using (SqlCommand cmd = new SqlCommand(tenProcedure, conn))
                     {
                         cmd.CommandType = CommandType.StoredProcedure;
-
-                        // 2. Truyền tham số vào SP
                         cmd.Parameters.AddWithValue("@MaKhachHang", maKH);
                         cmd.Parameters.AddWithValue("@MaSan", maSan);
                         cmd.Parameters.AddWithValue("@GioBatDau", batDau);
                         cmd.Parameters.AddWithValue("@GioKetThuc", ketThuc);
                         cmd.Parameters.AddWithValue("@MaPhieuDat", maPhieu);
+                        cmd.CommandTimeout = 60;
 
-                        // 3. QUAN TRỌNG: Tăng thời gian chờ (Timeout)
-                        // Vì trong SQL mình có lệnh WAITFOR DELAY 10s, mặc định C# chờ 30s là ok,
-                        // nhưng set lên 60s cho chắc chắn không bị ngắt giữa chừng.
-                        cmd.CommandTimeout = 60; 
-
-                        // 4. Thực thi và đọc kết quả trả về từ SQL
                         using (SqlDataReader reader = cmd.ExecuteReader())
                         {
                             if (reader.Read())
                             {
-                                // Lấy cột 'ThongBao' từ câu SELECT trong SP
                                 return reader["ThongBao"].ToString();
                             }
                         }
@@ -72,10 +52,9 @@ namespace VietSportSystem
                 }
                 catch (SqlException ex)
                 {
-                    // Mã lỗi 1205 là Deadlock (nếu xảy ra)
-                    if (ex.Number == 1205) 
+                    if (ex.Number == 1205)
                         return "Xung đột Deadlock! Hệ thống đã tự động hủy giao dịch này.";
-                    
+
                     return "Lỗi SQL: " + ex.Message;
                 }
                 catch (Exception ex)
@@ -86,28 +65,23 @@ namespace VietSportSystem
             return "Không có phản hồi từ Server";
         }
 
-        /// <summary>
-        /// Hàm dùng cho TRANSACTION 2 (Người quản lý set Bảo trì hoặc Người đặt thứ 2)
-        /// </summary>
         public static string CapNhatSan_Transaction_T2(string maSan, string trangThaiMoi)
         {
-            // Giả sử bạn dùng câu lệnh SQL trực tiếp hoặc gọi SP cập nhật
             using (SqlConnection conn = GetConnection())
             {
                 try
                 {
                     conn.Open();
-                    
-                    // Ví dụ cập nhật trực tiếp cho nhanh (hoặc gọi SP sp_CapNhatTrangThaiSan)
+
                     string query = "UPDATE SanTheThao SET TinhTrang = @TinhTrang WHERE MaSan = @MaSan";
-                    
+
                     using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        cmd.Parameters.AddWithValue("@TinhTrang", trangThaiMoi); // Ví dụ: 'Bảo trì'
+                        cmd.Parameters.AddWithValue("@TinhTrang", trangThaiMoi);
                         cmd.Parameters.AddWithValue("@MaSan", maSan);
 
                         int result = cmd.ExecuteNonQuery();
-                        
+
                         if (result > 0) return "Cập nhật trạng thái thành công!";
                         return "Không tìm thấy sân để cập nhật.";
                     }
@@ -117,6 +91,171 @@ namespace VietSportSystem
                     return "Lỗi cập nhật: " + ex.Message;
                 }
             }
+        }
+
+        // =============================================================
+        // CÁC HÀM GỌI PROCEDURE MỚI TRONG Procedure.sql
+        // =============================================================
+
+        /// <summary>
+        /// Gọi sp_DatSan_KiemTraGioiHan: kiểm tra giới hạn & trùng giờ, sau đó tự INSERT PhieuDatSan.
+        /// Giới hạn sân được tự động lấy từ bảng THAMSO (key MAX_BOOK).
+        /// Trả về thông báo lỗi (nếu có), null/empty nếu thành công.
+        /// </summary>
+        public static string? DatSan_KiemTraGioiHan(string maKhachHang, string maSan,
+                                                   DateTime gioBatDau, DateTime gioKetThuc,
+                                                   string kenhDat)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_DatSan_KiemTraGioiHan", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaKhachHang", maKhachHang);
+                        cmd.Parameters.AddWithValue("@MaSan", maSan);
+                        cmd.Parameters.AddWithValue("@GioBatDau", gioBatDau);
+                        cmd.Parameters.AddWithValue("@GioKetThuc", gioKetThuc);
+                        cmd.Parameters.AddWithValue("@KenhDat", kenhDat);
+                        // Không cần truyền @GioiHanSan nữa, SP sẽ tự lấy từ THAMSO
+
+                        cmd.ExecuteNonQuery();
+                    }
+                    return null; // Thành công
+                }
+                catch (SqlException ex)
+                {
+                    // Các RAISERROR trong SP sẽ nhảy vào đây
+                    return ex.Message;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gọi sp_DatSan_GayXungDot: bản demo dùng mức cô lập READ COMMITTED để dễ xảy ra xung đột.
+        /// SP trả về message qua SELECT KetQua; hàm này trả lại string message (null nếu không có).
+        /// </summary>
+        public static string? DatSan_GayXungDot(string maKhachHang, string maSan,
+                                               DateTime gioBatDau, DateTime gioKetThuc)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_DatSan_GayXungDot", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaKhachHang", maKhachHang);
+                        cmd.Parameters.AddWithValue("@MaSan", maSan);
+                        cmd.Parameters.AddWithValue("@GioBatDau", gioBatDau);
+                        cmd.Parameters.AddWithValue("@GioKetThuc", gioKetThuc);
+
+                        object? result = cmd.ExecuteScalar();
+                        return result?.ToString();
+                    }
+                }
+                catch (SqlException ex)
+                {
+                    return ex.Message;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gọi sp_ThueDungCu để trừ kho dịch vụ an toàn (có khóa UPDLOCK).
+        /// Trả về thông báo lỗi nếu có, null nếu thành công.
+        /// </summary>
+        public static string? ThueDungCu(string maDichVu, int soLuongThue)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_ThueDungCu", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaDichVu", maDichVu);
+                        cmd.Parameters.AddWithValue("@SoLuongThue", soLuongThue);
+                        cmd.ExecuteNonQuery();
+                    }
+                    return null;
+                }
+                catch (SqlException ex)
+                {
+                    return ex.Message;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gọi sp_NhapKho để cộng thêm tồn kho dịch vụ.
+        /// </summary>
+        public static string? NhapKho(string maDichVu, int soLuongNhap)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_NhapKho", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaDichVu", maDichVu);
+                        cmd.Parameters.AddWithValue("@SoLuongNhap", soLuongNhap);
+                        cmd.ExecuteNonQuery();
+                    }
+                    return null;
+                }
+                catch (SqlException ex)
+                {
+                    return ex.Message;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gọi sp_TimKiemSanTrong, trả về DataTable danh sách sân trống.
+        /// </summary>
+        public static DataTable TimKiemSanTrong(DateTime gioBatDau, DateTime gioKetThuc, string loaiSan)
+        {
+            DataTable dt = new DataTable();
+            using (SqlConnection conn = GetConnection())
+            {
+                conn.Open();
+                using (SqlCommand cmd = new SqlCommand("sp_TimKiemSanTrong", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@GioBatDau", gioBatDau);
+                    cmd.Parameters.AddWithValue("@GioKetThuc", gioKetThuc);
+                    cmd.Parameters.AddWithValue("@LoaiSan", loaiSan);
+
+                    using (SqlDataAdapter da = new SqlDataAdapter(cmd))
+                    {
+                        da.Fill(dt);
+                    }
+                }
+            }
+            return dt;
         }
     }
 }

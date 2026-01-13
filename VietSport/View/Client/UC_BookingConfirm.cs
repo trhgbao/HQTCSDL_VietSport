@@ -17,6 +17,7 @@ namespace VietSportSystem
         private Label lblDuration, lblTotalPrice;
         private TextBox txtNote, txtVoucher;
         private Label lblServiceList; // Hiển thị danh sách dịch vụ đã chọn
+        private CheckBox chkConflictDemo; // Bật chế độ dùng SP gây xung đột
         
         // Variables
         private decimal currentTotalCourt = 0; // Tiền sân
@@ -116,12 +117,22 @@ namespace VietSportSystem
             Button btnApply = new Button { Text = "Áp dụng", Location = new Point(210, 124), Size = new Size(80, 29) };
             UIHelper.StyleButton(btnApply, false);
             btnApply.Click += (s, e) => MessageBox.Show("Mã giảm giá không tồn tại!");
+
+            // Checkbox demo gây xung đột
+            chkConflictDemo = new CheckBox
+            {
+                Text = "Demo: Gây xung đột",
+                Location = new Point(20, 170),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                ForeColor = UIHelper.SecondaryColor
+            };
             
             Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 215), Size = new Size(270, 50) };
             UIHelper.StyleButton(btnConfirm, true);
             btnConfirm.Click += BtnConfirm_Click;
 
-            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, btnConfirm });
+            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkConflictDemo, btnConfirm });
 
             grid.Controls.Add(pnlLeft, 0, 0);
             grid.Controls.Add(pnlRight, 1, 0);
@@ -207,53 +218,71 @@ namespace VietSportSystem
         {
             if (currentTotalCourt <= 0) { MessageBox.Show("Vui lòng chọn thời gian hợp lệ!"); return; }
             if (!SessionData.IsLoggedIn()) { MessageBox.Show("Vui lòng đăng nhập!"); return; }
-            
-            using (SqlConnection conn = DatabaseHelper.GetConnection())
+
+            // Lưu ý: sp_DatSan_KiemTraGioiHan sẽ tự INSERT vào PhieuDatSan.
+            // SP sẽ tự động lấy giới hạn sân từ bảng THAMSO (key MAX_BOOK).
+            try
             {
-                conn.Open();
-                SqlTransaction trans = conn.BeginTransaction();
-                try
+                string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
+
+                string? msg;
+                bool isConflictDemo = chkConflictDemo.Checked;
+
+                if (isConflictDemo)
                 {
-                    string maPhieu = "PD" + DateTime.Now.ToString("ddHHmmss");
-                    string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim(); 
+                    msg = DatabaseHelper.DatSan_GayXungDot(
+                        maKhachHang: SessionData.CurrentUserID,
+                        maSan: maSanThuc,
+                        gioBatDau: dtpStart.Value,
+                        gioKetThuc: dtpEnd.Value
+                    );
+                }
+                else
+                {
+                    msg = DatabaseHelper.DatSan_KiemTraGioiHan(
+                        maKhachHang: SessionData.CurrentUserID,
+                        maSan: maSanThuc,
+                        gioBatDau: dtpStart.Value,
+                        gioKetThuc: dtpEnd.Value,
+                        kenhDat: "Online"
+                    );
+                }
 
-                    // 1. Insert Phiếu Đặt
-                    string sql = @"INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, GioBatDau, GioKetThuc, TrangThaiThanhToan, KenhDat)
-                                   VALUES (@Ma, @KH, @San, @Start, @End, N'Chưa thanh toán', 'Online')";
-                    
-                    SqlCommand cmd = new SqlCommand(sql, conn, trans);
-                    cmd.Parameters.AddWithValue("@Ma", maPhieu);
-                    cmd.Parameters.AddWithValue("@KH", SessionData.CurrentUserID);
-                    cmd.Parameters.AddWithValue("@San", maSanThuc);
-                    cmd.Parameters.AddWithValue("@Start", dtpStart.Value);
-                    cmd.Parameters.AddWithValue("@End", dtpEnd.Value);
-                    
-                    cmd.ExecuteNonQuery();
-
-                    // 2. Trừ kho Dịch vụ (Nếu có)
-                    if (_selectedServices.Count > 0)
+                if (!string.IsNullOrEmpty(msg))
+                {
+                    // Với SP gây xung đột, msg có thể là Thành công/Thất bại; kiểm tra để quyết định dừng.
+                    bool isFailure = msg.StartsWith("Thất bại", StringComparison.OrdinalIgnoreCase);
+                    if (isConflictDemo && !isFailure)
                     {
-                        foreach (var item in _selectedServices)
-                        {
-                            string sqlUpdateStock = "UPDATE DichVu SET SoLuongTon = SoLuongTon - @Qty WHERE MaDichVu = @MaDV";
-                            SqlCommand cmdStock = new SqlCommand(sqlUpdateStock, conn, trans);
-                            cmdStock.Parameters.AddWithValue("@Qty", item.SoLuong);
-                            cmdStock.Parameters.AddWithValue("@MaDV", item.MaDV);
-                            cmdStock.ExecuteNonQuery();
-                        }
+                        // Thành công: chỉ hiển thị thông tin, tiếp tục luồng
+                        MessageBox.Show(msg, "Kết quả (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
-
-                    trans.Commit();
-
-                    // Chuyển sang thanh toán với TỔNG TIỀN (Sân + Dịch vụ)
-                    decimal finalTotal = currentTotalCourt + currentTotalService;
-                    _mainForm.LoadView(new UC_Payment(_mainForm, maPhieu, finalTotal));
+                    else
+                    {
+                        MessageBox.Show(msg, "Không thể đặt sân", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
                 }
-                catch(Exception ex)
+
+                // Nếu có dịch vụ kèm theo: gọi sp_ThueDungCu để trừ kho an toàn
+                foreach (var item in _selectedServices)
                 {
-                    trans.Rollback();
-                    MessageBox.Show("Lỗi: " + ex.Message);
+                    string? msgDV = DatabaseHelper.ThueDungCu(item.MaDV, item.SoLuong);
+                    if (!string.IsNullOrEmpty(msgDV))
+                    {
+                        MessageBox.Show($"Lỗi khi trừ kho dịch vụ {item.TenDV}: {msgDV}", "Lỗi kho", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        // Không rollback phiếu đặt sân vì SP đã commit; nếu muốn chặt hơn bạn có thể
+                        // chuyển toàn bộ logic vào 1 SP khác để xử lý cả sân + dịch vụ.
+                    }
                 }
+
+                // Chuyển sang màn thanh toán (không có mã phiếu từ SP, nên chỉ hiển thị tổng tiền)
+                decimal finalTotal = currentTotalCourt + currentTotalService;
+                _mainForm.LoadView(new UC_Payment(_mainForm, null, finalTotal));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi: " + ex.Message);
             }
         }
     }
