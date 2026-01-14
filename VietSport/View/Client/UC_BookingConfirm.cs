@@ -17,7 +17,8 @@ namespace VietSportSystem
         private Label lblDuration, lblTotalPrice;
         private TextBox txtNote, txtVoucher;
         private Label lblServiceList; // Hiển thị danh sách dịch vụ đã chọn
-        private CheckBox chkConflictDemo; // Bật chế độ dùng SP gây xung đột
+        private CheckBox chkConflictDemo5; // Demo Xung đột 5: Phantom Read (Đặt sân)
+        private CheckBox chkConflictDemo6; // Demo Xung đột 6: Lost Update (Thuê dụng cụ)
         
         // Variables
         private decimal currentTotalCourt = 0; // Tiền sân
@@ -94,8 +95,8 @@ namespace VietSportSystem
             };
 
             // Ghi chú (Đẩy xuống dưới)
-            Label lblNote = new Label { Text = "Ghi chú:", Location = new Point(0, 270), AutoSize = true };
-            txtNote = new TextBox { Location = new Point(0, 295), Width = 480, Height = 60, Multiline = true, BorderStyle = BorderStyle.FixedSingle };
+            Label lblNote = new Label { Text = "Ghi chú:", Location = new Point(0, 280), AutoSize = true };
+            txtNote = new TextBox { Location = new Point(0, 305), Width = 480, Height = 60, Multiline = true, BorderStyle = BorderStyle.FixedSingle };
 
             pnlLeft.Controls.AddRange(new Control[] { lblSan, lblGia, grpTime, lblDVTitle, btnService, lblServiceList, lblNote, txtNote });
 
@@ -118,21 +119,31 @@ namespace VietSportSystem
             UIHelper.StyleButton(btnApply, false);
             btnApply.Click += (s, e) => MessageBox.Show("Mã giảm giá không tồn tại!");
 
-            // Checkbox demo gây xung đột
-            chkConflictDemo = new CheckBox
+            // Checkbox demo Xung đột 5: Phantom Read (Đặt sân)
+            chkConflictDemo5 = new CheckBox
             {
-                Text = "Demo: Gây xung đột",
+                Text = "Demo: Xung đột 5",
                 Location = new Point(20, 170),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 ForeColor = UIHelper.SecondaryColor
+            };
+
+            // Checkbox demo Xung đột 6: Lost Update (Thuê dụng cụ)
+            chkConflictDemo6 = new CheckBox
+            {
+                Text = "Demo: Xung đột 6",
+                Location = new Point(20, 200),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                ForeColor = Color.DarkRed
             };
             
             Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 215), Size = new Size(270, 50) };
             UIHelper.StyleButton(btnConfirm, true);
             btnConfirm.Click += BtnConfirm_Click;
 
-            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkConflictDemo, btnConfirm });
+            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkConflictDemo5, chkConflictDemo6, btnConfirm });
 
             grid.Controls.Add(pnlLeft, 0, 0);
             grid.Controls.Add(pnlRight, 1, 0);
@@ -226,9 +237,10 @@ namespace VietSportSystem
                 string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
 
                 string? msg;
-                bool isConflictDemo = chkConflictDemo.Checked;
+                bool isConflictDemo5 = chkConflictDemo5.Checked;
 
-                if (isConflictDemo)
+                // Xử lý đặt sân (Xung đột 5: Phantom Read)
+                if (isConflictDemo5)
                 {
                     msg = DatabaseHelper.DatSan_GayXungDot(
                         maKhachHang: SessionData.CurrentUserID,
@@ -250,12 +262,12 @@ namespace VietSportSystem
 
                 if (!string.IsNullOrEmpty(msg))
                 {
-                    // Với SP gây xung đột, msg có thể là Thành công/Thất bại; kiểm tra để quyết định dừng.
+                    // Với SP gây xung đột 5, msg có thể là Thành công/Thất bại; kiểm tra để quyết định dừng.
                     bool isFailure = msg.StartsWith("Thất bại", StringComparison.OrdinalIgnoreCase);
-                    if (isConflictDemo && !isFailure)
+                    if (isConflictDemo5 && !isFailure)
                     {
                         // Thành công: chỉ hiển thị thông tin, tiếp tục luồng
-                        MessageBox.Show(msg, "Kết quả (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(msg, "Kết quả (demo xung đột 5)", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     else
                     {
@@ -264,15 +276,51 @@ namespace VietSportSystem
                     }
                 }
 
-                // Nếu có dịch vụ kèm theo: gọi sp_ThueDungCu để trừ kho an toàn
+                // Xử lý trừ kho dịch vụ (Xung đột 6: Lost Update)
+                bool isConflictDemo6 = chkConflictDemo6.Checked;
                 foreach (var item in _selectedServices)
                 {
-                    string? msgDV = DatabaseHelper.ThueDungCu(item.MaDV, item.SoLuong);
-                    if (!string.IsNullOrEmpty(msgDV))
+                    string? msgDV;
+                    if (isConflictDemo6)
                     {
-                        MessageBox.Show($"Lỗi khi trừ kho dịch vụ {item.TenDV}: {msgDV}", "Lỗi kho", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        // Không rollback phiếu đặt sân vì SP đã commit; nếu muốn chặt hơn bạn có thể
-                        // chuyển toàn bộ logic vào 1 SP khác để xử lý cả sân + dịch vụ.
+                        // Dùng SP gây xung đột Lost Update
+                        msgDV = DatabaseHelper.ThueDungCu_GayXungDot(item.MaDV, item.SoLuong);
+                        if (!string.IsNullOrEmpty(msgDV))
+                        {
+                            // SP trả về SELECT KetQua, có thể là "Thành công..." hoặc "Lỗi..." hoặc "Deadlock..."
+                            bool isSuccess = msgDV.Contains("Thành công", StringComparison.OrdinalIgnoreCase);
+                            bool isDeadlock = msgDV.Contains("Deadlock", StringComparison.OrdinalIgnoreCase);
+                            
+                            if (isSuccess)
+                            {
+                                // Thành công: hiển thị thông tin và tiếp tục
+                                MessageBox.Show($"Demo Xung đột 6 - {item.TenDV}:\n{msgDV}\n\n⚠️ Lưu ý: Kiểm tra tồn kho trong DB để thấy Lost Update!", 
+                                    "Kết quả (demo xung đột 6)", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                            else if (isDeadlock)
+                            {
+                                // Deadlock: đây cũng là một dạng xung đột, nhưng SQL Server đã tự động xử lý
+                                MessageBox.Show($"Demo Xung đột 6 - {item.TenDV}:\n{msgDV}\n\n⚠️ Deadlock xảy ra do nhiều giao dịch cùng cập nhật!", 
+                                    "Deadlock (demo xung đột 6)", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                // Không return, tiếp tục với các dịch vụ khác
+                            }
+                            else
+                            {
+                                // Lỗi khác (không đủ hàng, v.v.)
+                                MessageBox.Show($"Lỗi khi trừ kho dịch vụ {item.TenDV}: {msgDV}", "Lỗi kho", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                return; // Dừng lại nếu lỗi nghiêm trọng
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Dùng SP chuẩn có UPDLOCK
+                        msgDV = DatabaseHelper.ThueDungCu(item.MaDV, item.SoLuong);
+                        if (!string.IsNullOrEmpty(msgDV))
+                        {
+                            MessageBox.Show($"Lỗi khi trừ kho dịch vụ {item.TenDV}: {msgDV}", "Lỗi kho", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
                     }
                 }
 

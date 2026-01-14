@@ -204,7 +204,45 @@ namespace VietSportSystem
         }
 
         /// <summary>
-        /// Gọi sp_NhapKho để cộng thêm tồn kho dịch vụ.
+        /// Demo gây xung đột Lost Update (Tình huống 6): Không dùng UPDLOCK, đọc xong nhả khóa ngay.
+        /// SP trả về SELECT KetQua. Trả về string message (null nếu không có).
+        /// </summary>
+        public static string? ThueDungCu_GayXungDot(string maDichVu, int soLuongThue)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_ThueDungCu_GayXungDot", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaDichVu", maDichVu);
+                        cmd.Parameters.AddWithValue("@SoLuongThue", soLuongThue);
+                        cmd.CommandTimeout = 30; // Tăng timeout để đợi WAITFOR DELAY
+
+                        object? result = cmd.ExecuteScalar();
+                        return result?.ToString();
+                    }
+                }
+                catch (SqlException ex)
+                {
+                    // Xử lý deadlock riêng
+                    if (ex.Number == 1205)
+                    {
+                        return "Deadlock: Giao dịch bị hủy do xung đột khóa. Đây là kết quả của Lost Update khi nhiều giao dịch cùng cập nhật.";
+                    }
+                    return ex.Message;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gọi sp_NhapKho để cộng thêm tồn kho dịch vụ (có UPDLOCK an toàn).
         /// </summary>
         public static string? NhapKho(string maDichVu, int soLuongNhap)
         {
@@ -224,6 +262,44 @@ namespace VietSportSystem
                 }
                 catch (SqlException ex)
                 {
+                    return ex.Message;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Demo gây xung đột Lost Update khi nhập kho: Không dùng UPDLOCK, đọc xong nhả khóa.
+        /// SP trả về SELECT KetQua. Trả về string message (null nếu không có).
+        /// </summary>
+        public static string? NhapKho_GayXungDot(string maDichVu, int soLuongNhap)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_NhapKho_GayXungDot", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaDichVu", maDichVu);
+                        cmd.Parameters.AddWithValue("@SoLuongNhap", soLuongNhap);
+                        cmd.CommandTimeout = 30; // Tăng timeout để đợi WAITFOR DELAY
+
+                        object? result = cmd.ExecuteScalar();
+                        return result?.ToString();
+                    }
+                }
+                catch (SqlException ex)
+                {
+                    // Xử lý deadlock riêng
+                    if (ex.Number == 1205)
+                    {
+                        return "Deadlock: Giao dịch bị hủy do xung đột khóa. Đây là kết quả của Lost Update khi nhiều giao dịch cùng cập nhật.";
+                    }
                     return ex.Message;
                 }
                 catch (Exception ex)

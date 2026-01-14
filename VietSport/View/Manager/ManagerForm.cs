@@ -44,6 +44,9 @@ namespace VietSportSystem
             Button btnLeave = CreateMenuBtn("Đơn nghỉ phép");
             btnLeave.Click += (s, e) => { lblTitle.Text = "DUYỆT ĐƠN NGHỈ PHÉP"; LoadView(new UC_Manager_Leave()); };
 
+            Button btnInventory = CreateMenuBtn("Quản lý kho");
+            btnInventory.Click += (s, e) => { lblTitle.Text = "QUẢN LÝ KHO DỊCH VỤ"; LoadView(new UC_Manager_Inventory()); };
+
             Button btnLogout = CreateMenuBtn("Đăng xuất");
             btnLogout.Click += (s, e) => {
                 SessionData.Logout();
@@ -54,7 +57,7 @@ namespace VietSportSystem
             // Add nút vào Sidebar (Ngược từ dưới lên hoặc dùng FlowLayout, ở đây add thủ công cho nhanh)
             // FlowLayout cho Sidebar
             FlowLayoutPanel flowMenu = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
-            flowMenu.Controls.AddRange(new Control[] { btnEmp, btnShift, btnLeave, btnStats, btnLogout });
+            flowMenu.Controls.AddRange(new Control[] { btnEmp, btnShift, btnLeave, btnInventory, btnStats, btnLogout });
 
             pnlSidebar.Controls.Add(flowMenu);
             pnlSidebar.Controls.Add(pnlLogo);
