@@ -44,27 +44,30 @@ namespace VietSportSystem
                         LEFT JOIN GiaThueSan g ON s.MaCoSo = g.MaCoSo AND s.LoaiSan = g.LoaiSan
                         WHERE s.MaSan = @Ma";
 
-                    SqlCommand cmd = new SqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@Ma", _maSan);
-                    SqlDataReader reader = cmd.ExecuteReader();
-
-                    if (reader.Read())
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        // Map dữ liệu vào object SanInfo để dùng lại cho màn hình Booking
-                        _info = new SanInfo();
-                        _info.TenSan = reader["MaSan"].ToString() + " - " + reader["TenCoSo"].ToString();
-                        _info.LoaiSan = reader["LoaiSan"].ToString();
-                        _info.GiaTien = reader["DonGia"] != DBNull.Value ? Convert.ToDecimal(reader["DonGia"]) : 0;
+                        cmd.Parameters.AddWithValue("@Ma", _maSan);
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                // Map dữ liệu vào object SanInfo để dùng lại cho màn hình Booking
+                                _info = new SanInfo();
+                                _info.TenSan = reader["MaSan"].ToString() + " - " + reader["TenCoSo"].ToString();
+                                _info.LoaiSan = reader["LoaiSan"].ToString();
+                                _info.GiaTien = reader["DonGia"] != DBNull.Value ? Convert.ToDecimal(reader["DonGia"]) : 0;
 
-                        string diaChi = reader["DiaChi"].ToString();
-                        string sucChua = reader["SucChua"].ToString();
-                        string tinhTrang = reader["TinhTrang"].ToString();
+                                string diaChi = reader["DiaChi"].ToString();
+                                string sucChua = reader["SucChua"].ToString();
+                                string tinhTrang = reader["TinhTrang"].ToString();
 
-                        RenderLayout(_info, diaChi, sucChua, tinhTrang);
-                    }
-                    else
-                    {
-                        MessageBox.Show("Không tìm thấy thông tin sân này!");
+                                RenderLayout(_info, diaChi, sucChua, tinhTrang);
+                            }
+                            else
+                            {
+                                MessageBox.Show("Không tìm thấy thông tin sân này!");
+                            }
+                        }
                     }
                 }
             }

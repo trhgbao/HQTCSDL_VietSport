@@ -20,13 +20,17 @@ namespace VietSportSystem
                 conn.Open();
                 // Chỉ lấy những loại sân đang tồn tại ở cơ sở này (DISTINCT để không trùng)
                 string sql = "SELECT DISTINCT LoaiSan FROM SanTheThao WHERE MaCoSo = @Ma";
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@Ma", maCoSo);
-
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    list.Add(reader["LoaiSan"].ToString());
+                    cmd.Parameters.AddWithValue("@Ma", maCoSo);
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            list.Add(reader["LoaiSan"].ToString());
+                        }
+                    }
                 }
             }
             return list;
@@ -67,18 +71,21 @@ namespace VietSportSystem
                 using (SqlConnection conn = DatabaseHelper.GetConnection())
                 {
                     conn.Open();
-                    SqlCommand cmd = new SqlCommand("SELECT MaCoSo, TenCoSo FROM CoSo", conn);
-                    SqlDataReader reader = cmd.ExecuteReader();
-
-                    // Tạo class tạm để bind dữ liệu
-                    var list = new System.Collections.ArrayList();
-                    while (reader.Read())
+                    using (SqlCommand cmd = new SqlCommand("SELECT MaCoSo, TenCoSo FROM CoSo", conn))
                     {
-                        list.Add(new { ID = reader["MaCoSo"].ToString(), Name = reader["TenCoSo"].ToString() });
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            // Tạo class tạm để bind dữ liệu
+                            var list = new System.Collections.ArrayList();
+                            while (reader.Read())
+                            {
+                                list.Add(new { ID = reader["MaCoSo"].ToString(), Name = reader["TenCoSo"].ToString() });
+                            }
+                            cboCoSo.DisplayMember = "Name";
+                            cboCoSo.ValueMember = "ID";
+                            cboCoSo.DataSource = list;
+                        }
                     }
-                    cboCoSo.DisplayMember = "Name";
-                    cboCoSo.ValueMember = "ID";
-                    cboCoSo.DataSource = list;
                 }
             }
             catch { }
@@ -126,13 +133,17 @@ namespace VietSportSystem
                 conn.Open();
                 // Key = "LoaiSan_KhungGio" (Ví dụ: Tennis_Ngày thường)
                 string sql = "SELECT LoaiSan, KhungGio, DonGia FROM GiaThueSan WHERE MaCoSo = @Ma";
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@Ma", maCoSo);
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    string key = reader["LoaiSan"].ToString() + "_" + reader["KhungGio"].ToString();
-                    dict[key] = Convert.ToDecimal(reader["DonGia"]);
+                    cmd.Parameters.AddWithValue("@Ma", maCoSo);
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string key = reader["LoaiSan"].ToString() + "_" + reader["KhungGio"].ToString();
+                            dict[key] = Convert.ToDecimal(reader["DonGia"]);
+                        }
+                    }
                 }
             }
             return dict;

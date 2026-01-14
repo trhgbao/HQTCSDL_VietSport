@@ -2,6 +2,7 @@
 using System.Drawing;
 using System.Windows.Forms;
 using System.Data.SqlClient;
+using System.Data;
 
 namespace VietSportSystem
 {
@@ -34,20 +35,24 @@ namespace VietSportSystem
                 conn.Open();
                 // Lấy thêm s.GhiChu
                 string sql = "SELECT MaSan, LoaiSan, TinhTrang, GhiChu, c.TenCoSo FROM SanTheThao s JOIN CoSo c ON s.MaCoSo = c.MaCoSo";
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    // Xử lý null cho GhiChu
-                    string note = reader["GhiChu"] != DBNull.Value ? reader["GhiChu"].ToString() : "";
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            // Xử lý null cho GhiChu
+                            string note = reader["GhiChu"] != DBNull.Value ? reader["GhiChu"].ToString() : "";
 
-                    pnlGrid.Controls.Add(CreateCard(
-                        reader["MaSan"].ToString(),
-                        reader["LoaiSan"].ToString(),
-                        reader["TenCoSo"].ToString(),
-                        reader["TinhTrang"].ToString(),
-                        note // <--- Truyền thêm note vào hàm CreateCard
-                    ));
+                            pnlGrid.Controls.Add(CreateCard(
+                                reader["MaSan"].ToString(),
+                                reader["LoaiSan"].ToString(),
+                                reader["TenCoSo"].ToString(),
+                                reader["TinhTrang"].ToString(),
+                                note // <--- Truyền thêm note vào hàm CreateCard
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -83,6 +88,37 @@ namespace VietSportSystem
             // Truyền note vào OpenUpdateForm
             pnl.Click += (s, e) => OpenUpdateForm(maSan, tinhTrang, note);
             pic.Click += (s, e) => OpenUpdateForm(maSan, tinhTrang, note);
+
+            Button btnDemoConflict = new Button
+            {
+                Text = "⚡ Bảo trì ngay",
+                Size = new Size(100, 30),
+                Location = new Point(180, 215), // Căn chỉnh vị trí cho đẹp
+                BackColor = Color.IndianRed,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 8)
+            };
+
+            btnDemoConflict.Click += (s, e) => {
+                try
+                {
+                    using (SqlConnection conn = DatabaseHelper.GetConnection())
+                    {
+                        conn.Open();
+                        // Gọi thủ tục sp_Demo_BaoTri
+                        SqlCommand cmd = new SqlCommand("sp_Demo_BaoTri", conn);
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaSan", maSan);
+                        cmd.ExecuteNonQuery();
+
+                        MessageBox.Show($"KỸ THUẬT: Đã set {maSan} bảo trì thành công!", "Thông báo từ Kỹ thuật");
+                        LoadFields(); // Load lại giao diện
+                    }
+                }
+                catch (Exception ex) { MessageBox.Show("Lỗi: " + ex.Message); }
+            };
+
+            pnl.Controls.Add(btnDemoConflict);
 
             pnl.Controls.AddRange(new Control[] { pic, lblInfo, lblStatus });
             return pnl;

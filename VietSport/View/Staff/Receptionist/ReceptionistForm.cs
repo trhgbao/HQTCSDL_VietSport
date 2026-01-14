@@ -58,9 +58,13 @@ namespace VietSportSystem
                 Environment.Exit(0);
             };
 
+            Button btnLeave = CreateBtn("Xin nghỉ phép", 4);
+
             // Thêm vào panel phải (Thứ tự: Đăng xuất trước -> Tên sau vì xếp phải qua trái)
             pnlUserRight.Controls.Add(btnLogout);
             pnlUserRight.Controls.Add(lblUser);
+            btnLeave.Click += (s, e) => LoadView(new UC_LeaveRequest());
+            pnlHeader.Controls.Add(btnLeave);
             // ------------------------------------------------------------------------
 
             // MENU BUTTONS (Giữa)

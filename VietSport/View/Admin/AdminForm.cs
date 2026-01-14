@@ -58,6 +58,7 @@ namespace VietSportSystem
             this.Controls.Add(pnlContent);
             this.Controls.Add(pnlHeader);
             this.Controls.Add(pnlSidebar);
+
         }
 
         private Button CreateMenuBtn(string text)

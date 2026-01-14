@@ -39,22 +39,26 @@ namespace VietSportSystem
             LEFT JOIN LuongNhanVien l ON nv.MaNhanVien = l.MaNhanVien 
             AND l.ThangNam = (SELECT MAX(ThangNam) FROM LuongNhanVien WHERE MaNhanVien = nv.MaNhanVien)";
 
-                SqlCommand cmd = new SqlCommand(sql, conn);
-                SqlDataReader reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (SqlCommand cmd = new SqlCommand(sql, conn))
                 {
-                    pnlList.Controls.Add(CreateEmpCard(
-                        reader["HoTen"].ToString(),
-                        DateTime.Parse(reader["NgaySinh"].ToString()), // Cần đảm bảo DB ko null hoặc try-catch
-                        reader["GioiTinh"].ToString(),
-                        "KTX Khu B", // Địa chỉ (Demo vì bảng NV chưa có cột DiaChi)
-                        reader["SoDienThoai"].ToString(),
-                        reader["CMND"].ToString(),
-                        reader["ChucVu"].ToString(),
-                        reader["MaCoSo"].ToString(),
-                        reader["MaNhanVien"].ToString(),
-                        Convert.ToDecimal(reader["LuongCoBan"])
-                    ));
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            pnlList.Controls.Add(CreateEmpCard(
+                                reader["HoTen"].ToString(),
+                                DateTime.Parse(reader["NgaySinh"].ToString()), // Cần đảm bảo DB ko null hoặc try-catch
+                                reader["GioiTinh"].ToString(),
+                                "KTX Khu B", // Địa chỉ (Demo vì bảng NV chưa có cột DiaChi)
+                                reader["SoDienThoai"].ToString(),
+                                reader["CMND"].ToString(),
+                                reader["ChucVu"].ToString(),
+                                reader["MaCoSo"].ToString(),
+                                reader["MaNhanVien"].ToString(),
+                                Convert.ToDecimal(reader["LuongCoBan"])
+                            ));
+                        }
+                    }
                 }
             }
         }

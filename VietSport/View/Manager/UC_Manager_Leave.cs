@@ -67,25 +67,59 @@ namespace VietSportSystem
 
         private void Grid_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
+            // 1. Kiểm tra click hợp lệ (không click vào header)
             if (e.RowIndex < 0) return;
 
-            string maDon = grid.Rows[e.RowIndex].Cells["MaDon"].Value.ToString();
             string action = "";
-
+            // Xác định hành động dựa trên tên cột
             if (grid.Columns[e.ColumnIndex].Name == "Approve") action = "Đã duyệt";
             else if (grid.Columns[e.ColumnIndex].Name == "Reject") action = "Từ chối";
 
+            // 2. Nếu người dùng đã nhấn nút xử lý
             if (action != "")
             {
+                // Lấy Mã đơn từ dòng hiện tại
+                string maDon = grid.Rows[e.RowIndex].Cells["MaDon"].Value.ToString();
+
+                // Hỏi xác nhận lần cuối
+                if (MessageBox.Show($"Bạn chắc chắn muốn chuyển trạng thái thành: {action.ToUpper()}?",
+                                    "Xác nhận duyệt", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+                    return;
+
                 using (SqlConnection conn = DatabaseHelper.GetConnection())
                 {
-                    conn.Open();
-                    SqlCommand cmd = new SqlCommand("UPDATE DonNghiPhep SET TrangThaiDuyet = @Stt WHERE MaDon = @Ma", conn);
-                    cmd.Parameters.AddWithValue("@Stt", action);
-                    cmd.Parameters.AddWithValue("@Ma", maDon);
-                    cmd.ExecuteNonQuery();
-                    MessageBox.Show("Đã cập nhật trạng thái: " + action);
-                    LoadData(); // Load lại
+                    try
+                    {
+                        conn.Open();
+
+                        // ================================================================
+                        // CHÈN PROCEDURE CỦA BẠN Ở ĐÂY
+                        // ================================================================
+                        SqlCommand cmd = new SqlCommand("Usp_DuyetNghiPhep", conn);
+                        cmd.CommandType = CommandType.StoredProcedure;
+
+                        // Truyền tham số cho Procedure
+                        cmd.Parameters.AddWithValue("@MaDon", maDon);
+                        cmd.Parameters.AddWithValue("@TrangThaiDuyet", action); // 'Đã duyệt' hoặc 'Từ chối'
+
+                        // Thực thi
+                        cmd.ExecuteNonQuery();
+
+                        // Thông báo thành công
+                        MessageBox.Show("Xử lý thành công: " + action);
+
+                        // Load lại danh sách để cập nhật giao diện
+                        LoadData();
+                    }
+                    catch (SqlException ex)
+                    {
+                        // Bắt lỗi từ SQL (ví dụ: Deadlock hoặc lỗi do bạn RAISERROR)
+                        MessageBox.Show("Lỗi xử lý (SQL): " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Lỗi hệ thống: " + ex.Message);
+                    }
                 }
             }
         }

@@ -13,37 +13,39 @@ CREATE TABLE CoSo (
 );
 GO
 
--- 3. BẢNG THAM SỐ HỆ THỐNG
+-- 3. BẢNG THAM SỐ HỆ THỐNG (Cập nhật PK tự tăng để hỗ trợ đa cơ sở)
 CREATE TABLE ThamSo (
-    MaThamSo VARCHAR(10) NOT NULL PRIMARY KEY,
-    TenThamSo NVARCHAR(100) NOT NULL UNIQUE,
-    GiaTri DECIMAL(10,2) NOT NULL CHECK (GiaTri > 0), -- Giả định giá trị là số
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    MaThamSo VARCHAR(20) NOT NULL,
+    TenThamSo NVARCHAR(100) NOT NULL,
+    GiaTri DECIMAL(10,2) NOT NULL DEFAULT 0,
     MaCoSo VARCHAR(10) NULL,
     LoaiSan NVARCHAR(50) NULL CHECK (LoaiSan IN (N'Bóng đá mini', N'Cầu lông', N'Tennis', N'Bóng rổ', N'Futsal')),
     GhiChu NVARCHAR(255) NULL,
-    CONSTRAINT FK_ThamSo_CoSo FOREIGN KEY (MaCoSo) REFERENCES CoSo(MaCoSo)
+    CONSTRAINT FK_ThamSo_CoSo FOREIGN KEY (MaCoSo) REFERENCES CoSo(MaCoSo),
+    CONSTRAINT UQ_ThamSo_CoSo UNIQUE (MaThamSo, MaCoSo) 
 );
 GO
 
--- 4. BẢNG SÂN THỂ THAO
+-- 4. BẢNG SÂN THỂ THAO (Đã thêm cột GhiChu)
 CREATE TABLE SanTheThao (
     MaSan VARCHAR(10) NOT NULL PRIMARY KEY,
     MaCoSo VARCHAR(10) NOT NULL,
     LoaiSan NVARCHAR(50) NOT NULL CHECK (LoaiSan IN (N'Bóng đá mini', N'Cầu lông', N'Tennis', N'Bóng rổ', N'Futsal')),
     SucChua INT NOT NULL CHECK (SucChua > 0),
     TinhTrang NVARCHAR(50) NOT NULL DEFAULT N'Còn trống' CHECK (TinhTrang IN (N'Còn trống', N'Đã đặt', N'Đang sử dụng', N'Bảo trì')),
-    GhiChu NVARCHAR(500)
+    GhiChu NVARCHAR(500) NULL, -- Cột này dùng để lưu lý do bảo trì
 	CONSTRAINT FK_San_CoSo FOREIGN KEY (MaCoSo) REFERENCES CoSo(MaCoSo)
 );
 GO
 
--- 5. BẢNG THỜI GIAN ĐẶT (QUẢN LÝ SLOT TRÊN SÂN)
+-- 5. BẢNG THỜI GIAN ĐẶT
 CREATE TABLE ThoiGianDat (
     MaThoiGianDat INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     MaSan VARCHAR(10) NOT NULL,
     GioBatDau DATETIME NOT NULL,
     GioKetThuc DATETIME NOT NULL,
-    TinhTrangDat NVARCHAR(50) NOT NULL DEFAULT N'Còn trống' CHECK (TinhTrangDat IN (N'Còn trống', N'Đã đặt', N'Đang sử dụng', N'Bảo trì')),
+    TinhTrangDat NVARCHAR(50) NOT NULL DEFAULT N'Còn trống',
     LyDoThayDoi NVARCHAR(255) NULL,
     NgayCapNhat DATETIME DEFAULT GETDATE(),
     CONSTRAINT CK_ThoiGianDat_Gio CHECK (GioKetThuc > GioBatDau),
@@ -62,13 +64,14 @@ CREATE TABLE GiaThueSan (
 );
 GO
 
--- 7. BẢNG KHÁCH HÀNG
+-- 7. BẢNG KHÁCH HÀNG (Đã thêm Email, DiaChi và check UNIQUE Email)
 CREATE TABLE KhachHang (
     MaKhachHang VARCHAR(10) NOT NULL PRIMARY KEY,
     HoTen NVARCHAR(100) NOT NULL,
     NgaySinh DATETIME NOT NULL,
     SoDienThoai VARCHAR(15) NOT NULL UNIQUE,
     Email VARCHAR(100) NULL UNIQUE,
+    DiaChi NVARCHAR(255) NULL, -- Thêm mới
     CapBacThanhVien NVARCHAR(20) DEFAULT 'Standard' CHECK (CapBacThanhVien IN ('Standard', 'Silver', 'Gold', 'Platinum')),
     LaHSSV BIT NOT NULL DEFAULT 0,
     LaNguoiCaoTuoi BIT NOT NULL DEFAULT 0,
@@ -77,11 +80,11 @@ CREATE TABLE KhachHang (
 );
 GO
 
--- 8. BẢNG NHÂN VIÊN
+-- 8. BẢNG NHÂN VIÊN (Đã thêm NgaySinh)
 CREATE TABLE NhanVien (
     MaNhanVien VARCHAR(10) NOT NULL PRIMARY KEY,
     HoTen NVARCHAR(100) NOT NULL,
-	NgaySinh DATETIME NOT NULL,
+	NgaySinh DATETIME NULL, -- Thêm mới để tránh lỗi load Admin
     MaCoSo VARCHAR(10) NOT NULL,
     ChucVu NVARCHAR(50) NOT NULL CHECK (ChucVu IN (N'Quản lý', N'Lễ tân', N'Kỹ thuật', N'Thu ngân', N'Quản trị', N'Huấn luyện viên')),
     CMND VARCHAR(12) NOT NULL UNIQUE,
@@ -94,7 +97,7 @@ GO
 -- 9. BẢNG LƯƠNG NHÂN VIÊN
 CREATE TABLE LuongNhanVien (
     MaNhanVien VARCHAR(10) NOT NULL,
-    ThangNam DATETIME NOT NULL, -- Dùng ngày đầu tháng để chốt
+    ThangNam DATETIME NOT NULL,
     LuongCoBan DECIMAL(10,2) NOT NULL CHECK (LuongCoBan >= 0),
     PhuCap DECIMAL(10,2) NOT NULL CHECK (PhuCap >= 0),
     ThuLaoCaTruc DECIMAL(10,2) NOT NULL CHECK (ThuLaoCaTruc >= 0),
@@ -172,16 +175,17 @@ CREATE TABLE DichVu (
 );
 GO
 
--- 15. BẢNG PHIẾU ĐẶT SÂN
+-- 15. BẢNG PHIẾU ĐẶT SÂN (Đã thêm cột DaHuy)
 CREATE TABLE PhieuDatSan (
     MaPhieuDat VARCHAR(10) NOT NULL PRIMARY KEY,
     MaKhachHang VARCHAR(10) NOT NULL,
     MaSan VARCHAR(10) NOT NULL,
-    MaNhanVien VARCHAR(10) NULL, -- Null nếu đặt Online chưa ai duyệt
+    MaNhanVien VARCHAR(10) NULL, 
     GioBatDau DATETIME NOT NULL,
     GioKetThuc DATETIME NOT NULL,
     TrangThaiThanhToan NVARCHAR(50) NOT NULL DEFAULT N'Chưa thanh toán' CHECK (TrangThaiThanhToan IN (N'Chưa thanh toán', N'Đã cọc', N'Đã thanh toán')),
     KenhDat NVARCHAR(20) NOT NULL CHECK (KenhDat IN ('Online', N'Trực tiếp')),
+    DaHuy BIT NOT NULL DEFAULT 0, -- Cột quan trọng để xử lý Lost Update
     CONSTRAINT CK_PhieuDat_ThoiGian CHECK (GioKetThuc > GioBatDau),
     CONSTRAINT FK_PhieuDat_KH FOREIGN KEY (MaKhachHang) REFERENCES KhachHang(MaKhachHang),
     CONSTRAINT FK_PhieuDat_San FOREIGN KEY (MaSan) REFERENCES SanTheThao(MaSan),
@@ -220,4 +224,28 @@ CREATE TABLE ChiTietSuDungDichVu (
     CONSTRAINT FK_CTDV_HLV FOREIGN KEY (MaNhanVienHLV) REFERENCES NhanVien(MaNhanVien),
     CONSTRAINT FK_CTDV_TaiSan FOREIGN KEY (MaTaiSan) REFERENCES TaiSan(MaTaiSan)
 );
+GO
+
+-- 18. BẢNG CHÍNH SÁCH GIẢM GIÁ (Thêm mới cho Demo Non-Repeatable Read)
+CREATE TABLE ChinhSachGiamGia (
+    MaChinhSach INT IDENTITY(1,1) PRIMARY KEY,
+    HangTV NVARCHAR(20) NOT NULL UNIQUE, -- Standard, Silver, Gold...
+    GiamGia DECIMAL(5,2) NOT NULL DEFAULT 0, -- % giảm
+    NgayCapNhat DATETIME DEFAULT GETDATE()
+);
+GO
+
+-- ************************
+-- NẠP DỮ LIỆU MẶC ĐỊNH
+-- ************************
+
+-- Chính sách giảm giá mặc định
+INSERT INTO ChinhSachGiamGia (HangTV, GiamGia) VALUES
+('Standard', 0), ('Silver', 5), ('Gold', 10), ('Platinum', 20);
+
+-- Tham số mặc định
+INSERT INTO ThamSo (MaThamSo, TenThamSo, GiaTri, MaCoSo) VALUES 
+('MIN_TIME', N'Thời gian đặt tối thiểu (phút)', 60, NULL),
+('MAX_TIME', N'Thời gian đặt tối đa (phút)', 180, NULL),
+('MAX_BOOK', N'Hạn mức số lượng sân/ngày', 3, NULL);
 GO

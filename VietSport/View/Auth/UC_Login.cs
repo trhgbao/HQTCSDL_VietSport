@@ -97,89 +97,93 @@ namespace VietSportSystem
                     (tk.TenDangNhap = @Input OR kh.SoDienThoai = @Input OR nv.SoDienThoai = @Input OR kh.Email = @Input) 
                     AND tk.MatKhau = @Pass";
 
-                    SqlCommand cmd = new SqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@Input", input);
-                    cmd.Parameters.AddWithValue("@Pass", pass);
-
-                    SqlDataReader reader = cmd.ExecuteReader();
-                    if (reader.Read())
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        // 1. Kiểm tra xem đây là NHÂN VIÊN hay KHÁCH HÀNG
-                        if (reader["MaNhanVien"] != DBNull.Value)
-                        {
-                            // --- ĐÂY LÀ NHÂN VIÊN ---
-                            string chucVu = reader["ChucVu"].ToString();
-                            string hoTen = reader["TenNhanVien"].ToString();
-                            string maNV = reader["MaNhanVien"].ToString();
-                            SessionData.CurrentUserFullName = hoTen; // <--- Thêm dòng này
-                            SessionData.CurrentUserID = maNV;        // <--- Đã sửa ở bài trước
-                            SessionData.UserRole = reader["ChucVu"].ToString();
-                            SessionData.CurrentUserID = reader["MaNhanVien"].ToString();
+                        cmd.Parameters.AddWithValue("@Input", input);
+                        cmd.Parameters.AddWithValue("@Pass", pass);
 
-                            if (chucVu == "Quản trị")
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            if (reader.Read())
                             {
-                                MessageBox.Show("Xin chào Quản trị viên: " + hoTen);
-                                AdminForm frmAdmin = new AdminForm(); // Sẽ tạo ở Bước 3
-                                _mainForm.Hide();
-                                frmAdmin.FormClosed += (s, args) => _mainForm.Close();
-                                frmAdmin.Show();
-                            }
-                            else if (chucVu == "Quản lý")
-                            {
-                                MessageBox.Show("Xin chào Quản lý: " + hoTen);
-                                ManagerForm frmManager = new ManagerForm();
-                                _mainForm.Hide();
-                                frmManager.FormClosed += (s, args) => _mainForm.Close();
-                                frmManager.Show();
-                            }
-                            else if (chucVu == "Lễ tân")
-                            {
-                                MessageBox.Show("Xin chào Lễ tân: " + hoTen);
-                                ReceptionistForm frmRec = new ReceptionistForm();
-                                _mainForm.Hide();
-                                frmRec.FormClosed += (s, args) => _mainForm.Close();
-                                frmRec.Show();
-                            }
-                            else if (chucVu == "Kỹ thuật")
-                            {
-                                MessageBox.Show("Xin chào Kỹ thuật: " + hoTen);
-                                TechnicianForm frmTech = new TechnicianForm();
-                                _mainForm.Hide();
-                                frmTech.FormClosed += (s, args) => _mainForm.Close();
-                                frmTech.Show();
-                            }
-                            else if (chucVu == "Thu ngân")
-                            {
-                                MessageBox.Show($"Xin chào Thu ngân: {hoTen}");
-                                CashierForm frmCashier = new CashierForm(); // Tạo ở Bước 2
-                                _mainForm.Hide();
-                                frmCashier.FormClosed += (s, args) => _mainForm.Close();
-                                frmCashier.Show();
+                                // 1. Kiểm tra xem đây là NHÂN VIÊN hay KHÁCH HÀNG
+                                if (reader["MaNhanVien"] != DBNull.Value)
+                                {
+                                    // --- ĐÂY LÀ NHÂN VIÊN ---
+                                    string chucVu = reader["ChucVu"].ToString();
+                                    string hoTen = reader["TenNhanVien"].ToString();
+                                    string maNV = reader["MaNhanVien"].ToString();
+                                    SessionData.CurrentUserFullName = hoTen;
+                                    SessionData.CurrentUserID = maNV;
+                                    SessionData.UserRole = chucVu;
+                                    SessionData.CurrentUsername = reader["TenDangNhap"].ToString();
+
+                                    if (chucVu == "Quản trị")
+                                    {
+                                        MessageBox.Show("Xin chào Quản trị viên: " + hoTen);
+                                        AdminForm frmAdmin = new AdminForm(); // Sẽ tạo ở Bước 3
+                                        _mainForm.Hide();
+                                        frmAdmin.FormClosed += (s, args) => _mainForm.Close();
+                                        frmAdmin.Show();
+                                    }
+                                    else if (chucVu == "Quản lý")
+                                    {
+                                        MessageBox.Show("Xin chào Quản lý: " + hoTen);
+                                        ManagerForm frmManager = new ManagerForm();
+                                        _mainForm.Hide();
+                                        frmManager.FormClosed += (s, args) => _mainForm.Close();
+                                        frmManager.Show();
+                                    }
+                                    else if (chucVu == "Lễ tân")
+                                    {
+                                        MessageBox.Show("Xin chào Lễ tân: " + hoTen);
+                                        ReceptionistForm frmRec = new ReceptionistForm();
+                                        _mainForm.Hide();
+                                        frmRec.FormClosed += (s, args) => _mainForm.Close();
+                                        frmRec.Show();
+                                    }
+                                    else if (chucVu == "Kỹ thuật")
+                                    {
+                                        MessageBox.Show("Xin chào Kỹ thuật: " + hoTen);
+                                        TechnicianForm frmTech = new TechnicianForm();
+                                        _mainForm.Hide();
+                                        frmTech.FormClosed += (s, args) => _mainForm.Close();
+                                        frmTech.Show();
+                                    }
+                                    else if (chucVu == "Thu ngân")
+                                    {
+                                        MessageBox.Show($"Xin chào Thu ngân: {hoTen}");
+                                        CashierForm frmCashier = new CashierForm(); // Tạo ở Bước 2
+                                        _mainForm.Hide();
+                                        frmCashier.FormClosed += (s, args) => _mainForm.Close();
+                                        frmCashier.Show();
+                                    }
+                                    else
+                                    {
+                                        // Các nhân viên khác (Lễ tân, Kỹ thuật...) 
+                                        // Tạm thời báo thông báo vì ta chưa vẽ giao diện cho họ
+                                        MessageBox.Show($"Xin chào {chucVu}: {hoTen}.\nHệ thống dành cho bộ phận của bạn đang bảo trì!", "Thông báo");
+                                    }
+                                }
+                                else
+                                {
+                                    // --- ĐÂY LÀ KHÁCH HÀNG (Logic cũ) ---
+                                    SessionData.CurrentUsername = reader["TenDangNhap"].ToString();
+                                    SessionData.CurrentUserFullName = reader["TenKhach"].ToString();
+                                    SessionData.CurrentUserID = reader["MaKhachHang"].ToString();
+                                    SessionData.UserRole = "KhachHang";
+
+                                    MessageBox.Show($"Đăng nhập thành công!\nXin chào: {SessionData.CurrentUserFullName}");
+
+                                    _mainForm.UpdateHeaderState();
+                                    _mainForm.LoadView(new UC_FastSearch(_mainForm));
+                                }
                             }
                             else
                             {
-                                // Các nhân viên khác (Lễ tân, Kỹ thuật...) 
-                                // Tạm thời báo thông báo vì ta chưa vẽ giao diện cho họ
-                                MessageBox.Show($"Xin chào {chucVu}: {hoTen}.\nHệ thống dành cho bộ phận của bạn đang bảo trì!", "Thông báo");
+                                MessageBox.Show("Tên đăng nhập hoặc mật khẩu không đúng!", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             }
                         }
-                        else
-                        {
-                            // --- ĐÂY LÀ KHÁCH HÀNG (Logic cũ) ---
-                            SessionData.CurrentUsername = reader["TenDangNhap"].ToString();
-                            SessionData.CurrentUserFullName = reader["TenKhach"].ToString();
-                            SessionData.CurrentUserID = reader["MaKhachHang"].ToString();
-                            SessionData.UserRole = "KhachHang";
-
-                            MessageBox.Show($"Đăng nhập thành công!\nXin chào: {SessionData.CurrentUserFullName}");
-
-                            _mainForm.UpdateHeaderState();
-                            _mainForm.LoadView(new UC_FastSearch(_mainForm));
-                        }
-                    }
-                    else
-                    {
-                        MessageBox.Show("Tên đăng nhập hoặc mật khẩu không đúng!", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }

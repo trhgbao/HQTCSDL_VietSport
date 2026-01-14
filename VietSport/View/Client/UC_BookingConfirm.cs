@@ -2,6 +2,9 @@
 using System.Drawing;
 using System.Data.SqlClient;
 using System.Windows.Forms;
+using System.Collections.Generic;
+using VietSportSystem.View.Staff.Receptionist; // Để dùng FormSelectService
+using System.Linq; // Để dùng Any()
 
 namespace VietSportSystem
 {
@@ -14,15 +17,23 @@ namespace VietSportSystem
         private DateTimePicker dtpStart, dtpEnd;
         private Label lblDuration, lblTotalPrice;
         private TextBox txtNote, txtVoucher;
-        private CheckBox chkDemoFix;
-        private decimal currentTotal;
+        private Label lblServiceList;
+
+        // Demo Checkboxes
+        private CheckBox chkConflictDemo; // Demo Xung đột (Nam)
+        private CheckBox chkFixVip;       // Demo VIP (Vu)
+
+        // Variables
+        private decimal currentTotalCourt = 0;
+        private decimal currentTotalService = 0;
+        private List<ServiceItem> _selectedServices = new List<ServiceItem>();
 
         public UC_BookingConfirm(MainForm main, SanInfo san)
         {
             _mainForm = main;
             _sanInfo = san;
             InitializeComponent();
-            CalculateTotal(); // Tính tiền lần đầu
+            CalculateTotal();
         }
 
         private void InitializeComponent()
@@ -30,16 +41,10 @@ namespace VietSportSystem
             this.BackColor = Color.WhiteSmoke;
             this.Dock = DockStyle.Fill;
 
-            // 1. Container chính (Hộp trắng ở giữa)
-            Panel pnlContainer = new Panel { Size = new Size(900, 500), BackColor = Color.White };
-
-            // Logic tự động căn giữa màn hình
+            Panel pnlContainer = new Panel { Size = new Size(900, 600), BackColor = Color.White };
             pnlContainer.Location = new Point((this.Width - 900) / 2, 50);
-            this.Resize += (s, e) => {
-                pnlContainer.Left = (this.Width - pnlContainer.Width) / 2;
-            };
+            this.Resize += (s, e) => { pnlContainer.Left = (this.Width - pnlContainer.Width) / 2; };
 
-            // 2. Header (Thanh xanh đậm tiêu đề)
             Label lblTitle = new Label
             {
                 Text = "XÁC NHẬN ĐẶT SÂN",
@@ -50,30 +55,25 @@ namespace VietSportSystem
                 BackColor = UIHelper.SecondaryColor,
                 ForeColor = Color.White
             };
+            pnlContainer.Controls.Add(lblTitle);
 
-            // 3. Grid chia cột (Thêm Padding top = 30 để đẩy nội dung xuống -> KHẮC PHỤC LỖI LỆCH)
             TableLayoutPanel grid = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                // Padding(Left, Top, Right, Bottom) -> Top=30 giúp chữ không bị dính lên trên
                 Padding = new Padding(20, 30, 20, 20)
             };
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F)); // Cột trái 60%
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F)); // Cột phải 40%
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
 
-            // --- CỘT TRÁI (Thông tin & Giờ) ---
+            // --- CỘT TRÁI ---
             Panel pnlLeft = new Panel { Dock = DockStyle.Fill };
-
             Label lblSan = new Label { Text = $"SÂN: {_sanInfo.TenSan}", Font = new Font("Segoe UI", 13, FontStyle.Bold), AutoSize = true, ForeColor = UIHelper.PrimaryColor };
             Label lblGia = new Label { Text = $"Đơn giá: {_sanInfo.GiaTien:N0} VNĐ/giờ", Location = new Point(0, 30), AutoSize = true, Font = new Font("Segoe UI", 11, FontStyle.Italic) };
 
-            // GroupBox chọn giờ
             GroupBox grpTime = new GroupBox { Text = "Thời gian đặt", Location = new Point(0, 70), Size = new Size(480, 100), Font = new Font("Segoe UI", 10) };
-
             Label lblS = new Label { Text = "Bắt đầu:", Location = new Point(20, 35), AutoSize = true };
             dtpStart = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy HH:mm", Location = new Point(90, 32), Width = 160 };
-            // Mặc định: Giờ hiện tại + 1 tiếng, phút chẵn
             dtpStart.Value = DateTime.Now.AddHours(1).Date.AddHours(DateTime.Now.Hour + 1);
             dtpStart.ValueChanged += Time_Changed;
 
@@ -83,30 +83,29 @@ namespace VietSportSystem
             dtpEnd.ValueChanged += Time_Changed;
 
             lblDuration = new Label { Text = "(1 giờ)", Location = new Point(270, 67), AutoSize = true, ForeColor = Color.Blue, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
-
             grpTime.Controls.AddRange(new Control[] { lblS, dtpStart, lblE, dtpEnd, lblDuration });
 
-            // Ghi chú
-            Label lblNote = new Label { Text = "Ghi chú:", Location = new Point(0, 190), AutoSize = true };
-            txtNote = new TextBox { Location = new Point(0, 215), Width = 480, Height = 80, Multiline = true, BorderStyle = BorderStyle.FixedSingle };
+            // Dịch vụ
+            Label lblDVTitle = new Label { Text = "Dịch vụ đi kèm:", Location = new Point(0, 190), AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
+            Button btnService = new Button { Text = "➕ Thêm Nước/Dụng cụ", Location = new Point(0, 215), Size = new Size(180, 35) };
+            UIHelper.StyleButton(btnService, false);
+            btnService.Click += BtnService_Click;
 
-            pnlLeft.Controls.AddRange(new Control[] { lblSan, lblGia, grpTime, lblNote, txtNote });
+            lblServiceList = new Label { Text = "Chưa chọn dịch vụ nào", Location = new Point(200, 220), AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Italic), ForeColor = Color.DimGray };
 
+            // Checkbox demo VIP (Vu)
+            chkFixVip = new CheckBox { Text = "Bật FIX VIP (xung đột 14)", Location = new Point(0, 255), AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Bold), ForeColor = UIHelper.SecondaryColor };
 
-            // --- CỘT PHẢI (Thanh toán) ---
+            Label lblNote = new Label { Text = "Ghi chú:", Location = new Point(0, 285), AutoSize = true };
+            txtNote = new TextBox { Location = new Point(0, 310), Width = 480, Height = 60, Multiline = true, BorderStyle = BorderStyle.FixedSingle };
+
+            pnlLeft.Controls.AddRange(new Control[] { lblSan, lblGia, grpTime, lblDVTitle, btnService, lblServiceList, chkFixVip, lblNote, txtNote });
+
+            // --- CỘT PHẢI ---
             Panel pnlRight = new Panel { Dock = DockStyle.Fill };
-            // Để cột phải background màu trắng luôn cho đồng bộ hoặc màu xám nhạt tùy ý
-
             Label lblPayTitle = new Label { Text = "THANH TOÁN", Font = new Font("Segoe UI", 12, FontStyle.Bold), Location = new Point(20, 0), AutoSize = true };
 
-            lblTotalPrice = new Label
-            {
-                Text = "0 VNĐ",
-                Font = new Font("Segoe UI", 18, FontStyle.Bold),
-                ForeColor = Color.Red,
-                Location = new Point(20, 40),
-                AutoSize = true
-            };
+            lblTotalPrice = new Label { Text = "0 VNĐ", Font = new Font("Segoe UI", 18, FontStyle.Bold), ForeColor = Color.Red, Location = new Point(20, 40), AutoSize = true };
 
             Label lblVoucher = new Label { Text = "Mã giảm giá:", Location = new Point(20, 100), AutoSize = true };
             txtVoucher = new TextBox { Location = new Point(20, 125), Width = 180, Font = UIHelper.MainFont };
@@ -114,105 +113,129 @@ namespace VietSportSystem
             UIHelper.StyleButton(btnApply, false);
             btnApply.Click += (s, e) => MessageBox.Show("Mã giảm giá không tồn tại!");
 
-            chkDemoFix = new CheckBox
-            {
-                Text = "Demo: Bật chế độ Fix Lỗi (Serializable)",
-                Location = new Point(20, 170),
-                AutoSize = true,
-                ForeColor = Color.DarkBlue,
-                Font = new Font("Segoe UI", 9, FontStyle.Bold)
-            };
+            // Checkbox demo Xung đột (Nam)
+            chkConflictDemo = new CheckBox { Text = "Demo: Gây xung đột", Location = new Point(20, 170), AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold), ForeColor = UIHelper.SecondaryColor };
 
             Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 215), Size = new Size(270, 50) };
             UIHelper.StyleButton(btnConfirm, true);
             btnConfirm.Click += BtnConfirm_Click;
 
-            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkDemoFix, btnConfirm });
+            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkConflictDemo, btnConfirm });
 
-            // Add cột vào grid
             grid.Controls.Add(pnlLeft, 0, 0);
             grid.Controls.Add(pnlRight, 1, 0);
 
-            // Thứ tự Add quan trọng: Header trước, Grid sau
             pnlContainer.Controls.Add(lblTitle);
             pnlContainer.Controls.Add(grid);
-
-            // Vì Grid Dock Fill nên phải Bring Header to Front để chắc chắn nó ở trên cùng
             lblTitle.BringToFront();
-
             this.Controls.Add(pnlContainer);
         }
 
-        // Logic tính tiền (Giữ nguyên)
-        private void Time_Changed(object sender, EventArgs e)
+        private void BtnService_Click(object sender, EventArgs e)
         {
-            CalculateTotal();
+            FormSelectService frm = new FormSelectService();
+            if (frm.ShowDialog() == DialogResult.OK)
+            {
+                _selectedServices = frm.SelectedServices;
+                currentTotalService = 0;
+                string displayList = "";
+                foreach (var item in _selectedServices)
+                {
+                    currentTotalService += item.ThanhTien;
+                    displayList += $"{item.TenDV} (x{item.SoLuong}), ";
+                }
+
+                if (_selectedServices.Count > 0)
+                {
+                    lblServiceList.Text = displayList.TrimEnd(',', ' ') + $"\nCộng thêm: {currentTotalService:N0} VNĐ";
+                    lblServiceList.ForeColor = Color.Blue;
+                }
+                else
+                {
+                    lblServiceList.Text = "Chưa chọn dịch vụ nào";
+                    lblServiceList.ForeColor = Color.DimGray;
+                }
+                CalculateTotal();
+            }
         }
+
+        private void Time_Changed(object sender, EventArgs e) => CalculateTotal();
 
         private void CalculateTotal()
         {
             if (dtpEnd.Value <= dtpStart.Value)
             {
                 lblDuration.Text = "(Lỗi thời gian)";
-                lblDuration.ForeColor = Color.Red;
-                lblTotalPrice.Text = "---";
-                currentTotal = 0;
-                return;
-            }
-
-            TimeSpan span = dtpEnd.Value - dtpStart.Value;
-            double hours = Math.Round(span.TotalHours, 1);
-
-            if (hours < 0.5)
-            {
-                lblDuration.Text = "(Tối thiểu 30p)";
-                lblDuration.ForeColor = Color.Red;
-                currentTotal = 0;
+                currentTotalCourt = 0;
             }
             else
             {
-                lblDuration.Text = $"({hours} giờ)";
-                lblDuration.ForeColor = Color.Blue;
-                currentTotal = (decimal)hours * _sanInfo.GiaTien;
+                double hours = Math.Round((dtpEnd.Value - dtpStart.Value).TotalHours, 1);
+                if (hours < 0.5) { lblDuration.Text = "(Tối thiểu 30p)"; currentTotalCourt = 0; }
+                else { lblDuration.Text = $"({hours} giờ)"; currentTotalCourt = (decimal)hours * _sanInfo.GiaTien; }
             }
-
-            lblTotalPrice.Text = currentTotal.ToString("N0") + " VNĐ";
+            lblTotalPrice.Text = (currentTotalCourt + currentTotalService).ToString("N0") + " VNĐ";
         }
 
         private void BtnConfirm_Click(object sender, EventArgs e)
         {
-            if (currentTotal <= 0) { MessageBox.Show("Vui lòng chọn thời gian hợp lệ!"); return; }
+            if (currentTotalCourt <= 0) { MessageBox.Show("Vui lòng chọn thời gian hợp lệ!"); return; }
+            if (!SessionData.IsLoggedIn()) { MessageBox.Show("Vui lòng đăng nhập!"); return; }
 
-            // Lấy MaSan (xử lý logic cắt chuỗi như cũ của bạn)
-            // Lưu ý: Đảm bảo MaSan đúng định dạng trong DB (ví dụ 'S005')
-            string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
-            string maKH = SessionData.CurrentUserID;
-
-            // Kiểm tra xem người dùng có tick vào chế độ Fix lỗi không
-            bool dungCheDoFix = chkDemoFix.Checked;
-
-            // Thông báo bắt đầu Demo
-            MessageBox.Show("Hệ thống đang xử lý đặt sân...\n(Sẽ giả lập độ trễ 10s để bạn kịp thao tác máy khác)", "Thông báo Demo");
-
-            // GỌI HÀM TRANSACTION TỪ DATABASE HELPER
-            // Hàm này sẽ gọi xuống Stored Procedure có WAITFOR DELAY
-            string ketQua = DatabaseHelper.DatSan_Transaction_T1(maKH, maSanThuc, dtpStart.Value, dtpEnd.Value, dungCheDoFix);
-
-            // Kiểm tra kết quả trả về từ SQL
-            if (ketQua.Contains("thành công") || ketQua.Contains("Success"))
+            try
             {
-                MessageBox.Show(ketQua, "Thành công");
+                string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
 
-                // Chỉ khi thành công mới chuyển sang trang thanh toán
-                // Tạo mã phiếu tạm (hoặc lấy từ DB nếu procedure trả về, ở đây mình giả lập lại để hiện QR)
-                string maPhieuDisplay = "PD" + DateTime.Now.ToString("ddHHmmss");
-                _mainForm.LoadView(new UC_Payment(_mainForm, maPhieuDisplay, currentTotal));
+                // 1. XỬ LÝ ĐẶT SÂN (Logic của Nam)
+                string? msg;
+                if (chkConflictDemo.Checked)
+                {
+                    msg = DatabaseHelper.DatSan_GayXungDot(SessionData.CurrentUserID, maSanThuc, dtpStart.Value, dtpEnd.Value);
+                }
+                else
+                {
+                    msg = DatabaseHelper.DatSan_KiemTraGioiHan(SessionData.CurrentUserID, maSanThuc, dtpStart.Value, dtpEnd.Value, "Online");
+                }
+
+                if (!string.IsNullOrEmpty(msg))
+                {
+                    bool isFailure = msg.StartsWith("Thất bại", StringComparison.OrdinalIgnoreCase);
+                    if (chkConflictDemo.Checked && !isFailure)
+                        MessageBox.Show(msg, "Kết quả (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    else
+                    {
+                        MessageBox.Show(msg, "Không thể đặt sân", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+
+                // 2. XỬ LÝ DỊCH VỤ (Logic kết hợp)
+                foreach (var item in _selectedServices)
+                {
+                    // Nếu là VIP (Logic Vu) -> Bỏ qua, xử lý sau ở Payment
+                    if (string.Equals(item.MaDV, "DV_VIP", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    // Nếu là DV thường (Logic Nam) -> Trừ kho ngay
+                    string? msgDV = DatabaseHelper.ThueDungCu(item.MaDV, item.SoLuong);
+                    if (!string.IsNullOrEmpty(msgDV))
+                        MessageBox.Show($"Lỗi trừ kho {item.TenDV}: {msgDV}");
+                }
+
+                // 3. XỬ LÝ VIP CONTEXT (Logic Vu)
+                bool hasVip = _selectedServices.Any(s => string.Equals(s.MaDV, "DV_VIP", StringComparison.OrdinalIgnoreCase));
+                if (hasVip)
+                {
+                    BookingContext.VipSelected = true;
+                    BookingContext.VipStart = dtpEnd.Value;
+                    BookingContext.VipEnd = dtpEnd.Value.AddMinutes(30);
+                    BookingContext.VipUseFix = chkFixVip.Checked;
+                }
+                else BookingContext.ClearVip();
+
+                // 4. CHUYỂN TRANG
+                _mainForm.LoadView(new UC_Payment(_mainForm, null, currentTotalCourt + currentTotalService));
             }
-            else
-            {
-                // Trường hợp lỗi (Sân trùng, hoặc lỗi Deadlock/Update conflict)
-                MessageBox.Show(ketQua, "Thất bại - Xung đột xảy ra", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            catch (Exception ex) { MessageBox.Show("Lỗi: " + ex.Message); }
         }
     }
 }

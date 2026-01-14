@@ -96,21 +96,24 @@ namespace VietSportSystem
                 using (SqlConnection conn = DatabaseHelper.GetConnection())
                 {
                     conn.Open();
-                    SqlCommand cmd = new SqlCommand("SELECT MaCoSo, TenCoSo FROM CoSo", conn);
-                    SqlDataReader reader = cmd.ExecuteReader();
-
-                    var list = new System.Collections.ArrayList();
-                    // Item đặc biệt: Tất cả
-                    list.Add(new { ID = "ALL", Name = "Toàn bộ hệ thống (Mặc định)" });
-
-                    while (reader.Read())
+                    using (SqlCommand cmd = new SqlCommand("SELECT MaCoSo, TenCoSo FROM CoSo", conn))
                     {
-                        list.Add(new { ID = reader["MaCoSo"].ToString(), Name = reader["TenCoSo"].ToString() });
-                    }
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            var list = new System.Collections.ArrayList();
+                            // Item đặc biệt: Tất cả
+                            list.Add(new { ID = "ALL", Name = "Toàn bộ hệ thống (Mặc định)" });
 
-                    cboCoSo.DisplayMember = "Name";
-                    cboCoSo.ValueMember = "ID";
-                    cboCoSo.DataSource = list;
+                            while (reader.Read())
+                            {
+                                list.Add(new { ID = reader["MaCoSo"].ToString(), Name = reader["TenCoSo"].ToString() });
+                            }
+
+                            cboCoSo.DisplayMember = "Name";
+                            cboCoSo.ValueMember = "ID";
+                            cboCoSo.DataSource = list;
+                        }
+                    }
                 }
             }
             catch { }
@@ -159,27 +162,30 @@ namespace VietSportSystem
             // Đếm xem có bao nhiêu giá trị khác nhau cho tham số này
             // (Tính cả giá trị mặc định MaCoSo IS NULL và giá trị riêng)
             string sql = "SELECT DISTINCT GiaTri FROM ThamSo WHERE MaThamSo = @Key";
-            SqlCommand cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@Key", key);
+            using (SqlCommand cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Key", key);
 
-            SqlDataReader reader = cmd.ExecuteReader();
-            List<string> values = new List<string>();
-            while (reader.Read()) values.Add(reader["GiaTri"].ToString());
-            reader.Close();
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    List<string> values = new List<string>();
+                    while (reader.Read()) values.Add(reader["GiaTri"].ToString());
 
-            if (values.Count > 1)
-            {
-                // Nếu có nhiều hơn 1 giá trị -> Tức là các cơ sở đang không đồng bộ
-                txt.Text = "(Khác nhau)";
-                txt.ForeColor = Color.Gray; // Tô xám
-            }
-            else if (values.Count == 1)
-            {
-                txt.Text = values[0]; // Đồng bộ thì hiện giá trị đó
-            }
-            else
-            {
-                txt.Text = "0"; // Chưa có dữ liệu
+                    if (values.Count > 1)
+                    {
+                        // Nếu có nhiều hơn 1 giá trị -> Tức là các cơ sở đang không đồng bộ
+                        txt.Text = "(Khác nhau)";
+                        txt.ForeColor = Color.Gray; // Tô xám
+                    }
+                    else if (values.Count == 1)
+                    {
+                        txt.Text = values[0]; // Đồng bộ thì hiện giá trị đó
+                    }
+                    else
+                    {
+                        txt.Text = "0"; // Chưa có dữ liệu
+                    }
+                }
             }
         }
 
@@ -192,12 +198,14 @@ namespace VietSportSystem
                 WHERE MaThamSo = @Key AND (MaCoSo = @CS OR MaCoSo IS NULL)
                 ORDER BY MaCoSo DESC"; // DESC để MaCoSo (có giá trị) xếp trên NULL
 
-            SqlCommand cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@Key", key);
-            cmd.Parameters.AddWithValue("@CS", maCoSo);
+            using (SqlCommand cmd = new SqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@Key", key);
+                cmd.Parameters.AddWithValue("@CS", maCoSo);
 
-            object result = cmd.ExecuteScalar();
-            txt.Text = result != null ? result.ToString() : "0";
+                object result = cmd.ExecuteScalar();
+                txt.Text = result != null ? result.ToString() : "0";
+            }
         }
 
         private void BtnSave_Click(object sender, EventArgs e)

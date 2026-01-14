@@ -51,10 +51,22 @@ namespace VietSportSystem
                 Environment.Exit(0);
             };
 
+            Button btnLeaveRequest = CreateMenuBtn("Xin nghỉ phép (Cá nhân)");
+            btnLeaveRequest.Click += (s, e) => {
+                lblTitle.Text = "ĐƠN XIN NGHỈ PHÉP CÁ NHÂN";
+                LoadView(new UC_LeaveRequest());
+            };
+
+            Button btnStatus = CreateMenuBtn("Trạng thái sân (Demo 10)");
+            btnStatus.Click += (s, e) => {
+                if (lblTitle != null) lblTitle.Text = "THEO DÕI TRẠNG THÁI SÂN";
+                LoadView(new UC_Manager_CourtStatus()); // Gọi file bạn vừa tạo
+            };
+
             // Add nút vào Sidebar (Ngược từ dưới lên hoặc dùng FlowLayout, ở đây add thủ công cho nhanh)
             // FlowLayout cho Sidebar
             FlowLayoutPanel flowMenu = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
-            flowMenu.Controls.AddRange(new Control[] { btnEmp, btnShift, btnLeave, btnStats, btnLogout });
+            flowMenu.Controls.AddRange(new Control[] { btnEmp, btnShift, btnLeave, btnStats, btnLogout, btnStatus });
 
             pnlSidebar.Controls.Add(flowMenu);
             pnlSidebar.Controls.Add(pnlLogo);

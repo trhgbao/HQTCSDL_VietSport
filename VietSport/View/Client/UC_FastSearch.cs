@@ -171,27 +171,30 @@ namespace VietSportSystem
                         AND s.LoaiSan LIKE @Type
                         AND s.TinhTrang = N'Còn trống'";
 
-                    SqlCommand cmd = new SqlCommand(query, conn);
-                    cmd.Parameters.AddWithValue("@City", "%" + city + "%");
-                    cmd.Parameters.AddWithValue("@Type", "%" + type + "%");
-                    cmd.Parameters.AddWithValue("@Khung", khungGioCanTim);
-
-                    SqlDataReader reader = cmd.ExecuteReader();
-
-                    while (reader.Read())
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        SanInfo info = new SanInfo();
-                        info.TenSan = reader["MaSan"].ToString() + " - " + reader["TenCoSo"].ToString();
-                        info.LoaiSan = reader["LoaiSan"].ToString();
-                        info.TrangThai = reader["TinhTrang"].ToString();
-                        info.KhungGio = khungGioCanTim; // Hiển thị khung giờ đã chọn
+                        cmd.Parameters.AddWithValue("@City", "%" + city + "%");
+                        cmd.Parameters.AddWithValue("@Type", "%" + type + "%");
+                        cmd.Parameters.AddWithValue("@Khung", khungGioCanTim);
 
-                        if (reader["DonGia"] != DBNull.Value)
-                            info.GiaTien = Convert.ToDecimal(reader["DonGia"]);
-                        else
-                            info.GiaTien = 0;
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                SanInfo info = new SanInfo();
+                                info.TenSan = reader["MaSan"].ToString() + " - " + reader["TenCoSo"].ToString();
+                                info.LoaiSan = reader["LoaiSan"].ToString();
+                                info.TrangThai = reader["TinhTrang"].ToString();
+                                info.KhungGio = khungGioCanTim; // Hiển thị khung giờ đã chọn
 
-                        ketQuaThat.Add(info);
+                                if (reader["DonGia"] != DBNull.Value)
+                                    info.GiaTien = Convert.ToDecimal(reader["DonGia"]);
+                                else
+                                    info.GiaTien = 0;
+
+                                ketQuaThat.Add(info);
+                            }
+                        }
                     }
                 }
 
