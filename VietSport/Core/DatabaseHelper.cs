@@ -223,6 +223,71 @@ namespace VietSportSystem
                 new SqlParameter("@MaPhieuDat", maPhieu));
         }
 
+        // =============================================================
+        // 5. CÁC HÀM DEMO LOST UPDATE (TÌNH HUỐNG 6 & 13 - KHO DỊCH VỤ)
+        // =============================================================
+
+        /// <summary>
+        /// Demo gây xung đột Lost Update (Tình huống 6): Không dùng UPDLOCK, đọc xong nhả khóa ngay.
+        /// SP trả về SELECT KetQua. Trả về string message (null nếu không có).
+        /// </summary>
+        public static string? ThueDungCu_GayXungDot(string maDichVu, int soLuongThue)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_ThueDungCu_GayXungDot", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaDichVu", maDichVu);
+                        cmd.Parameters.AddWithValue("@SoLuongThue", soLuongThue);
+                        cmd.CommandTimeout = 30; // Tăng timeout để đợi WAITFOR DELAY
+
+                        object? result = cmd.ExecuteScalar();
+                        return result?.ToString();
+                    }
+                }
+                catch (SqlException ex)
+                {
+                    if (ex.Number == 1205) return "Deadlock: Giao dịch bị hủy do xung đột khóa (Lost Update).";
+                    return ex.Message;
+                }
+                catch (Exception ex) { return ex.Message; }
+            }
+        }
+
+        /// <summary>
+        /// Demo gây xung đột Lost Update khi nhập kho (Tình huống 13).
+        /// </summary>
+        public static string? NhapKho_GayXungDot(string maDichVu, int soLuongNhap)
+        {
+            using (SqlConnection conn = GetConnection())
+            {
+                try
+                {
+                    conn.Open();
+                    using (SqlCommand cmd = new SqlCommand("sp_NhapKho_GayXungDot", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@MaDichVu", maDichVu);
+                        cmd.Parameters.AddWithValue("@SoLuongNhap", soLuongNhap);
+                        cmd.CommandTimeout = 30;
+
+                        object? result = cmd.ExecuteScalar();
+                        return result?.ToString();
+                    }
+                }
+                catch (SqlException ex)
+                {
+                    if (ex.Number == 1205) return "Deadlock: Giao dịch bị hủy do xung đột khóa (Lost Update).";
+                    return ex.Message;
+                }
+                catch (Exception ex) { return ex.Message; }
+            }
+        }
+
         // --- SCENARIO 10: Maintenance & View ---
         public static string Sp_CapNhatBaoTriSan(string maSan)
         {

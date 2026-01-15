@@ -304,6 +304,7 @@ BEGIN
         RAISERROR(@ErrorMessage, 16, 1);
     END CATCH
 END;
+
 GO
 
 -- =============================================================
@@ -311,83 +312,6 @@ GO
 -- (Bao gồm các Proc quản lý Giới hạn đặt, Kho, và Phantom Read)
 -- =============================================================
 
-CREATE OR ALTER PROCEDURE sp_DatSan_KiemTraGioiHan
-    @MaKhachHang VARCHAR(10),
-    @MaSan VARCHAR(10),
-    @GioBatDau DATETIME,
-    @GioKetThuc DATETIME,
-    @KenhDat NVARCHAR(20)
-AS
-BEGIN
-    -- Thiết lập mức cô lập cao nhất
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-    BEGIN TRY
-        BEGIN TRAN
-            -- 1. Lấy MaCoSo từ sân để tìm giới hạn phù hợp
-            DECLARE @MaCoSo VARCHAR(10);
-            SELECT @MaCoSo = MaCoSo FROM SanTheThao WHERE MaSan = @MaSan;
-            
-            -- 2. Lấy giới hạn sân từ bảng THAMSO (ưu tiên theo cơ sở, nếu không có thì lấy global)
-            DECLARE @GioiHanSan INT;
-            SELECT TOP 1 @GioiHanSan = CAST(GiaTri AS INT)
-            FROM ThamSo
-            WHERE MaThamSo = 'MAX_BOOK' 
-              AND (MaCoSo = @MaCoSo OR MaCoSo IS NULL)
-            ORDER BY MaCoSo DESC; -- Ưu tiên MaCoSo cụ thể trước, sau đó mới đến NULL (global)
-            
-            -- Nếu không tìm thấy trong THAMSO, dùng giá trị mặc định là 3
-            IF @GioiHanSan IS NULL
-                SET @GioiHanSan = 3;
-
-            -- 3. Kiểm tra số lượng sân đã đặt trong ngày
-            DECLARE @SoLuongDaDat INT;
-            DECLARE @NgayDat DATE = CAST(@GioBatDau AS DATE);
-
-            SELECT @SoLuongDaDat = COUNT(*)
-            FROM PhieuDatSan
-            WHERE MaKhachHang = @MaKhachHang
-              AND CAST(GioBatDau AS DATE) = @NgayDat
-              AND TrangThaiThanhToan != N'Đã hủy';
-
-            -- 4. Kiểm tra giới hạn (sử dụng giá trị từ bảng THAMSO)
-            IF (@SoLuongDaDat >= @GioiHanSan)
-            BEGIN
-                -- Nếu vi phạm, rollback và báo lỗi
-                ROLLBACK TRAN;
-                RAISERROR(N'Khách hàng đã đạt giới hạn đặt sân trong ngày.', 16, 1);
-                RETURN;
-            END
-
-            -- 5. Kiểm tra trùng giờ (Logic nghiệp vụ)
-            IF EXISTS (SELECT 1 FROM PhieuDatSan 
-                       WHERE MaSan = @MaSan 
-                       AND TrangThaiThanhToan != N'Đã hủy'
-                       AND ((@GioBatDau >= GioBatDau AND @GioBatDau < GioKetThuc)
-                         OR (@GioKetThuc > GioBatDau AND @GioKetThuc <= GioKetThuc)))
-            BEGIN
-                 ROLLBACK TRAN;
-                 RAISERROR(N'Sân đã bị đặt trong khung giờ này.', 16, 1);
-                 RETURN;
-            END
-
-            -- 6. Thực hiện đặt sân
-            -- Tạo mã phiếu tự động đơn giản để test
-            DECLARE @NewID VARCHAR(10) = LEFT(NEWID(), 8); 
-            
-            INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, GioBatDau, GioKetThuc, TrangThaiThanhToan, KenhDat)
-            VALUES (@NewID, @MaKhachHang, @MaSan, @GioBatDau, @GioKetThuc, N'Chưa thanh toán', @KenhDat);
-
-        COMMIT TRAN;
-        PRINT N'Đặt sân thành công.';
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-END;
-GO
 
 CREATE OR ALTER PROCEDURE sp_ThueDungCu
     @MaDichVu VARCHAR(10),
@@ -436,6 +360,81 @@ BEGIN
     END CATCH
 END;
 GO
+
+CREATE OR ALTER PROCEDURE sp_DatSan_KiemTraGioiHan
+    @MaKhachHang VARCHAR(10),
+    @MaSan VARCHAR(10),
+    @GioBatDau DATETIME,
+    @GioKetThuc DATETIME,
+    @KenhDat NVARCHAR(20)
+AS
+BEGIN
+    -- Thiết lập mức cô lập cao nhất
+    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+    BEGIN TRY
+        BEGIN TRAN
+            -- 1. Lấy MaCoSo từ sân để tìm giới hạn phù hợp
+            DECLARE @MaCoSo VARCHAR(10);
+            SELECT @MaCoSo = MaCoSo FROM SanTheThao WHERE MaSan = @MaSan;
+            
+            -- 2. Lấy giới hạn sân từ bảng THAMSO
+            DECLARE @GioiHanSan INT;
+            SELECT TOP 1 @GioiHanSan = CAST(GiaTri AS INT)
+            FROM ThamSo
+            WHERE MaThamSo = 'MAX_BOOK' 
+              AND (MaCoSo = @MaCoSo OR MaCoSo IS NULL)
+            ORDER BY MaCoSo DESC;
+            
+            IF @GioiHanSan IS NULL SET @GioiHanSan = 3;
+
+            -- 3. Kiểm tra số lượng sân đã đặt
+            DECLARE @SoLuongDaDat INT;
+            DECLARE @NgayDat DATE = CAST(@GioBatDau AS DATE);
+
+            SELECT @SoLuongDaDat = COUNT(*)
+            FROM PhieuDatSan
+            WHERE MaKhachHang = @MaKhachHang
+              AND CAST(GioBatDau AS DATE) = @NgayDat
+              AND TrangThaiThanhToan != N'Đã hủy';
+
+            -- 4. Kiểm tra giới hạn
+            IF (@SoLuongDaDat >= @GioiHanSan)
+            BEGIN
+                ROLLBACK TRAN;
+                RAISERROR(N'Khách hàng đã đạt giới hạn đặt sân trong ngày.', 16, 1);
+                RETURN;
+            END
+
+            -- 5. Kiểm tra trùng giờ
+            IF EXISTS (SELECT 1 FROM PhieuDatSan 
+                       WHERE MaSan = @MaSan 
+                       AND TrangThaiThanhToan != N'Đã hủy'
+                       AND ((@GioBatDau >= GioBatDau AND @GioBatDau < GioKetThuc)
+                         OR (@GioKetThuc > GioBatDau AND @GioKetThuc <= GioKetThuc)))
+            BEGIN
+                 ROLLBACK TRAN;
+                 RAISERROR(N'Sân đã bị đặt trong khung giờ này.', 16, 1);
+                 RETURN;
+            END
+
+            -- 6. Thực hiện đặt sân
+            DECLARE @NewID VARCHAR(10) = LEFT(NEWID(), 8); 
+            
+            INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, GioBatDau, GioKetThuc, TrangThaiThanhToan, KenhDat, DaHuy)
+            VALUES (@NewID, @MaKhachHang, @MaSan, @GioBatDau, @GioKetThuc, N'Chưa thanh toán', @KenhDat, 0);
+
+        COMMIT TRAN;
+        PRINT N'Đặt sân thành công.';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR(@ErrorMessage, 16, 1);
+    END CATCH
+END;
+GO
+
 
 CREATE OR ALTER PROCEDURE sp_NhapKho
     @MaDichVu VARCHAR(10),
@@ -528,10 +527,6 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
-            
-            -- Giả lập độ trễ 5 giây:
-            -- Để đảm bảo Giao dịch 2 kịp chạy vào và ĐỌC số lượng trước khi Giao dịch 1 kịp INSERT
-            WAITFOR DELAY '00:00:05';
 
             -- 1. Kiểm tra số lượng sân đã đặt trong ngày
             DECLARE @SoLuongDaDat INT;
@@ -551,6 +546,10 @@ BEGIN
                 RETURN;
             END
 
+            -- Giả lập độ trễ 5 giây SAU KHI ĐẾM nhưng TRƯỚC KHI INSERT
+            -- để 2 giao dịch cùng nhìn thấy cùng một @SoLuongDaDat
+            WAITFOR DELAY '00:00:05';
+
             -- 3. Thực hiện đặt sân (Nếu thỏa điều kiện < 2)
             DECLARE @NewID VARCHAR(10) = LEFT(NEWID(), 8); -- Random ID để không trùng khóa chính
             
@@ -566,6 +565,95 @@ BEGIN
     END CATCH
 END;
 GO
+
+CREATE OR ALTER PROCEDURE sp_ThueDungCu_GayXungDot
+    @MaDichVu VARCHAR(10),
+    @SoLuongThue INT
+AS
+BEGIN
+    SET TRANSACTION ISOLATION LEVEL READ COMMITTED; -- Mức mặc định (dễ bị Lost Update)
+
+    BEGIN TRY
+        BEGIN TRAN
+            DECLARE @TonKhoHienTai INT;
+
+            -- Đọc tồn kho (Chỉ giữ Shared Lock, nhả ngay sau khi đọc)
+            -- KHÔNG CÓ UPDLOCK => Cho phép người khác đọc cùng lúc
+            SELECT @TonKhoHienTai = SoLuongTon
+            FROM DichVu
+            WHERE MaDichVu = @MaDichVu;
+
+            -- Giả lập độ trễ để người khác kịp chen vào đọc giá trị cũ
+            WAITFOR DELAY '00:00:05';
+
+            IF @TonKhoHienTai IS NULL
+            BEGIN
+                ROLLBACK TRAN;
+                SELECT N'Dịch vụ không tồn tại.' AS KetQua;
+                RETURN;
+            END
+
+            IF @TonKhoHienTai < @SoLuongThue
+            BEGIN
+                ROLLBACK TRAN;
+                SELECT N'Số lượng tồn kho không đủ.' AS KetQua;
+                RETURN;
+            END
+
+            -- Cập nhật tồn kho (Ghi đè giá trị của người khác nếu họ đã update trong lúc mình wait)
+            UPDATE DichVu
+            SET SoLuongTon = @TonKhoHienTai - @SoLuongThue
+            WHERE MaDichVu = @MaDichVu;
+
+        COMMIT TRAN;
+        SELECT N'Thuê dụng cụ thành công (Có thể bị Lost Update). Tồn kho ghi nhận: ' + CAST((@TonKhoHienTai - @SoLuongThue) AS NVARCHAR) AS KetQua;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        SELECT ERROR_MESSAGE() AS KetQua;
+    END CATCH
+END;
+GO
+
+-- 2. SP Nhập Kho Gây Lỗi (Tương tự)
+CREATE OR ALTER PROCEDURE sp_NhapKho_GayXungDot
+    @MaDichVu VARCHAR(10),
+    @SoLuongNhap INT
+AS
+BEGIN
+    SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+    BEGIN TRY
+        BEGIN TRAN
+            DECLARE @TonKhoHienTai INT;
+
+            SELECT @TonKhoHienTai = SoLuongTon
+            FROM DichVu
+            WHERE MaDichVu = @MaDichVu;
+
+            WAITFOR DELAY '00:00:05'; -- Delay để tạo điều kiện tranh chấp
+
+            IF @TonKhoHienTai IS NULL
+            BEGIN
+                ROLLBACK TRAN;
+                SELECT N'Mã dịch vụ không hợp lệ.' AS KetQua;
+                RETURN;
+            END
+
+            UPDATE DichVu
+            SET SoLuongTon = @TonKhoHienTai + @SoLuongNhap
+            WHERE MaDichVu = @MaDichVu;
+
+        COMMIT TRAN;
+        SELECT N'Nhập kho thành công (Có thể bị Lost Update).' AS KetQua;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        SELECT ERROR_MESSAGE() AS KetQua;
+    END CATCH
+END;
+GO
+
 
 -- =============================================================
 -- TỪ FILE: 7-Proc.sql
