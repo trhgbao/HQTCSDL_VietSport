@@ -213,7 +213,7 @@ BEGIN
             -- nên ta cần rollback trong CATCH hoặc check xact_state
             RAISERROR(N'Không tìm thấy giá cho sân/khung giờ này', 16, 1);
         END
-
+		WAITFOR DELAY '00:00:10';
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -1216,21 +1216,28 @@ GO
 
 CREATE OR ALTER PROCEDURE Usp_DuyetNghiPhep
     @MaDon INT,
-    @TrangThaiDuyet NVARCHAR(20)
+    @TrangThaiDuyet NVARCHAR(20),
+    @UseLock BIT = 1  -- Param để demo lock (1 chống, 0 lỗi)
 AS
 BEGIN
-    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;  -- Chống lost update
+    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     BEGIN TRANSACTION;
     BEGIN TRY
-        -- Lock ca trực liên quan để tránh concurrent update
-        SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
-        WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
+        IF @UseLock = 1
+        BEGIN
+            SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
+            WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
+        END
+        ELSE
+        {
+            SELECT * FROM PhanCongCaTruc 
+            WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
+        }
 
-		WAITFOR DELAY '00:00:10';
-        -- Update trạng thái duyệt
+        -- Chèn WAITFOR để pause demo (T2 chen update trong 10s)
+        WAITFOR DELAY '00:00:10';
+
         UPDATE DonNghiPhep SET TrangThaiDuyet = @TrangThaiDuyet WHERE MaDon = @MaDon;
-
-        -- Nếu duyệt, update ca trực thay thế
         IF @TrangThaiDuyet = N'Đã duyệt'
         BEGIN
             UPDATE PhanCongCaTruc SET MaNhanVien = d.MaNguoiThayThe 
