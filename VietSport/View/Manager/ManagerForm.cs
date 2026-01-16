@@ -56,7 +56,7 @@ namespace VietSportSystem
             Button btnLeaveRequest = CreateMenuBtn("Xin nghỉ phép (Cá nhân)");
             btnLeaveRequest.Click += (s, e) => { SetActive(btnLeaveRequest); lblTitle.Text = "ĐƠN XIN NGHỈ PHÉP CÁ NHÂN"; LoadView(new UC_LeaveRequest()); };
 
-            Button btnStatus = CreateMenuBtn("Trạng thái sân (Demo 10)");
+            Button btnStatus = CreateMenuBtn("Trạng thái sân");
             btnStatus.Click += (s, e) => { SetActive(btnStatus); lblTitle.Text = "THEO DÕI TRẠNG THÁI SÂN"; LoadView(new UC_Manager_CourtStatus()); };
 
             Button btnLogout = CreateMenuBtn("Đăng xuất");

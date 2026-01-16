@@ -71,7 +71,8 @@ namespace VietSportSystem
             {
                 Text = $"Tên sân: {maSan} - {loaiSan}\nCơ sở: {coSo}",
                 Location = new Point(10, 160),
-                AutoSize = true,
+                Size = new Size(280, 35),
+                TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Segoe UI", 9, FontStyle.Bold)
             };
 
@@ -79,7 +80,8 @@ namespace VietSportSystem
             {
                 Text = "Tình trạng: " + tinhTrang,
                 Location = new Point(10, 200),
-                AutoSize = true,
+                Size = new Size(280, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = tinhTrang == "Bảo trì" ? Color.Red : Color.Green
             };
 
@@ -89,36 +91,7 @@ namespace VietSportSystem
             pnl.Click += (s, e) => OpenUpdateForm(maSan, tinhTrang, note);
             pic.Click += (s, e) => OpenUpdateForm(maSan, tinhTrang, note);
 
-            Button btnDemoConflict = new Button
-            {
-                Text = "⚡ Bảo trì ngay",
-                Size = new Size(100, 30),
-                Location = new Point(180, 215), // Căn chỉnh vị trí cho đẹp
-                BackColor = Color.IndianRed,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 8)
-            };
-
-            btnDemoConflict.Click += (s, e) => {
-                try
-                {
-                    using (SqlConnection conn = DatabaseHelper.GetConnection())
-                    {
-                        conn.Open();
-                        // Gọi thủ tục sp_Demo_BaoTri
-                        SqlCommand cmd = new SqlCommand("sp_Demo_BaoTri", conn);
-                        cmd.CommandType = CommandType.StoredProcedure;
-                        cmd.Parameters.AddWithValue("@MaSan", maSan);
-                        cmd.ExecuteNonQuery();
-
-                        MessageBox.Show($"KỸ THUẬT: Đã set {maSan} bảo trì thành công!", "Thông báo từ Kỹ thuật");
-                        LoadFields(); // Load lại giao diện
-                    }
-                }
-                catch (Exception ex) { MessageBox.Show("Lỗi: " + ex.Message); }
-            };
-
-            pnl.Controls.Add(btnDemoConflict);
+            // Button đã bỏ theo yêu cầu
 
             pnl.Controls.AddRange(new Control[] { pic, lblInfo, lblStatus });
             return pnl;

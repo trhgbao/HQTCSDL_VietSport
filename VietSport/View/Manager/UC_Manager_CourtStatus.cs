@@ -59,9 +59,9 @@ namespace VietSportSystem
             UIHelper.StyleButton(btnRefresh, true);
             btnRefresh.Click += BtnRefresh_Click;
 
-            lblResult = new Label { Text = "", Location = new Point(20, 65), AutoSize = true, ForeColor = Color.DarkGreen };
+            // lblResult = new Label { Text = "", Location = new Point(20, 65), AutoSize = true, ForeColor = Color.DarkGreen };
 
-            pnlControls.Controls.AddRange(new Control[] { lblCoSo, cboCoSo, chkFixMode, btnRefresh, lblResult });
+            pnlControls.Controls.AddRange(new Control[] { lblCoSo, cboCoSo, chkFixMode, btnRefresh });
 
             // Grid hiển thị sân
             gridSan = new DataGridView
@@ -106,8 +106,8 @@ namespace VietSportSystem
             string maCoSo = cboCoSo.SelectedValue.ToString();
             bool isFixMode = chkFixMode.Checked;
 
-            lblResult.Text = "Đang tải dữ liệu...";
-            lblResult.ForeColor = Color.Orange;
+            // lblResult.Text = "Đang tải dữ liệu...";
+            // lblResult.ForeColor = Color.Orange;
             Application.DoEvents();
 
             try
@@ -137,16 +137,17 @@ namespace VietSportSystem
 
                         gridSan.DataSource = dt;
 
-                        string ketQua = outParam.Value?.ToString() ?? "";
-                        lblResult.Text = ketQua;
-                        lblResult.ForeColor = Color.DarkGreen;
+                        // string ketQua = outParam.Value?.ToString() ?? "";
+                        // lblResult.Text = ketQua;
+                        // lblResult.ForeColor = Color.DarkGreen;
                     }
                 }
             }
             catch (Exception ex)
             {
-                lblResult.Text = "Lỗi: " + ex.Message;
-                lblResult.ForeColor = Color.Red;
+                // lblResult.Text = "Lỗi: " + ex.Message;
+                // lblResult.ForeColor = Color.Red;
+                MessageBox.Show("Lỗi: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

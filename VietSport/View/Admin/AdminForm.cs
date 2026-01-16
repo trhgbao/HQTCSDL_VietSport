@@ -34,6 +34,9 @@ namespace VietSportSystem
             Button btnLimit = CreateMenuBtn("   > Thời gian/Hạn mức");
             btnLimit.Click += (s, e) => LoadView(new UC_Admin_Settings());
 
+            Button btnDiscount = CreateMenuBtn("   > Chính sách giảm giá");
+            btnDiscount.Click += (s, e) => LoadView(new UC_Admin_DiscountPolicy());
+
             Button btnLogout = CreateMenuBtn("Đăng xuất");
             btnLogout.Click += (s, e) => {
                 SessionData.Logout();
@@ -41,7 +44,7 @@ namespace VietSportSystem
                 Environment.Exit(0);
             };
 
-            pnlSidebar.Controls.AddRange(new Control[] { btnLimit, btnPrice, lblParam, btnEmp, lblMenu, btnLogout });
+            pnlSidebar.Controls.AddRange(new Control[] { btnDiscount, btnLimit, btnPrice, lblParam, btnEmp, lblMenu, btnLogout });
 
             // HEADER
             Panel pnlHeader = new Panel { Dock = DockStyle.Top, Height = 60, BackColor = Color.WhiteSmoke };
