@@ -193,35 +193,41 @@ GO
 CREATE OR ALTER PROCEDURE Usp_TinhGiaSan
     @MaSan VARCHAR(10),
     @KhungGio NVARCHAR(50),
-    @GiaThue DECIMAL(10,2) OUTPUT -- Đã sửa: Đưa kiểu dữ liệu lên trước chữ OUTPUT
+    @GiaThue DECIMAL(18,0) OUTPUT -- Đã sửa thành decimal(18,0) cho khớp với tiền VNĐ
 AS
 BEGIN
-    SET NOCOUNT ON; -- Thêm dòng này để tối ưu, không trả về số dòng bị ảnh hưởng
+    SET NOCOUNT ON;
+    
+    -- QUAN TRỌNG: Mức độ này giữ Shared Lock đến khi hết Transaction
+    -- Người khác đọc được, nhưng không sửa được (Sửa sẽ bị treo chờ)
     SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     
     BEGIN TRANSACTION;
     BEGIN TRY
+        -- BƯỚC 1: Đọc giá (SQL tự đánh dấu Shared Lock dòng này)
         SELECT @GiaThue = DonGia 
-        FROM GiaThueSan WITH (UPDLOCK) -- Giữ nguyên logic lock của bạn
+        FROM GiaThueSan
         WHERE MaCoSo = (SELECT MaCoSo FROM SanTheThao WHERE MaSan = @MaSan)
         AND LoaiSan = (SELECT LoaiSan FROM SanTheThao WHERE MaSan = @MaSan)
         AND KhungGio = @KhungGio;
 
         IF @GiaThue IS NULL
         BEGIN
-            -- Lưu ý: RAISERROR với severity 16 sẽ nhảy xuống CATCH block ngay lập tức
-            -- nên ta cần rollback trong CATCH hoặc check xact_state
-            RAISERROR(N'Không tìm thấy giá cho sân/khung giờ này', 16, 1);
+            -- Nếu không có giá thì rollback ngay
+            RAISERROR(N'Không tìm thấy giá quy định.', 16, 1);
         END
 
+        -- BƯỚC 2: Giả lập thời gian xem xét/xử lý (10 giây)
+        -- Trong 10s này, Shared Lock vẫn được giữ.
+        -- Nếu T2 chạy UPDATE vào lúc này -> T2 sẽ bị TREO (BLOCKED)
+        WAITFOR DELAY '00:00:10';
+
+        -- BƯỚC 3: Kết thúc (Lúc này mới nhả khóa cho T2 sửa)
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-            
-        -- Ném lỗi ra ngoài để ứng dụng biết
-        THROW;
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW; -- Ném lỗi ra C# xử lý
     END CATCH
 END;
 GO
@@ -1216,21 +1222,46 @@ GO
 
 CREATE OR ALTER PROCEDURE Usp_DuyetNghiPhep
     @MaDon INT,
-    @TrangThaiDuyet NVARCHAR(20)
+    @TrangThaiDuyet NVARCHAR(20),
+    @UseLock BIT = 1  -- 1: An toàn, 0: Gây lỗi
 AS
 BEGIN
-    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;  -- Chống lost update
+    SET NOCOUNT ON;
+
     BEGIN TRANSACTION;
     BEGIN TRY
-        -- Lock ca trực liên quan để tránh concurrent update
-        SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
-        WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
+        -- =============================================================
+        -- PHÂN TÁCH LOGIC KHÓA RÕ RÀNG
+        -- =============================================================
+        
+        IF @UseLock = 1 
+        BEGIN
+            -- TRƯỜNG HỢP AN TOÀN (FIX BUG)
+            -- Dùng Repeatable Read + UPDLOCK để giữ chỗ, người khác phải chờ
+            SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+            
+            SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
+            WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
+        END
+        ELSE
+        BEGIN
+            -- TRƯỜNG HỢP GÂY LỖI (DEMO)
+            -- Dùng Read Committed: Đọc xong nhả khóa ngay -> Người khác chen vào Update được
+            SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+            
+            SELECT * FROM PhanCongCaTruc 
+            WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
+        END
 
-		WAITFOR DELAY '00:00:10';
-        -- Update trạng thái duyệt
+        -- =============================================================
+        -- GIẢ LẬP ĐỘ TRỄ (Để T2 kịp chen vào sửa trong lúc T1 đang chạy)
+        -- =============================================================
+        WAITFOR DELAY '00:00:10';
+
+        -- Cập nhật trạng thái
         UPDATE DonNghiPhep SET TrangThaiDuyet = @TrangThaiDuyet WHERE MaDon = @MaDon;
 
-        -- Nếu duyệt, update ca trực thay thế
+        -- Logic nghiệp vụ phụ (cập nhật lịch trực)
         IF @TrangThaiDuyet = N'Đã duyệt'
         BEGIN
             UPDATE PhanCongCaTruc SET MaNhanVien = d.MaNguoiThayThe 
@@ -1238,15 +1269,15 @@ BEGIN
             WHERE d.MaDon = @MaDon;
         END
 
-        COMMIT;
+        COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
-        ROLLBACK;
-        THROW;
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        DECLARE @Msg NVARCHAR(MAX) = ERROR_MESSAGE();
+        RAISERROR(@Msg, 16, 1);
     END CATCH
 END;
 GO
-
 -- =============================================================
 -- TỪ FILE: 14-Proc.sql
 -- (Scenario 14: Double Booking VIP Room)
