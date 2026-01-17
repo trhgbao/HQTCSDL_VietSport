@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Drawing;
 using System.Windows.Forms;
+using VietSportSystem;
 
 namespace VietSportSystem.View.Staff.Receptionist
 {
@@ -51,7 +52,8 @@ namespace VietSportSystem.View.Staff.Receptionist
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false,
-                RowHeadersVisible = false
+                RowHeadersVisible = false,
+                AutoGenerateColumns = true // Đảm bảo tự động tạo cột từ DataSource
             };
 
             // Xử lý sự kiện tick checkbox để cập nhật trạng thái ngay lập tức
@@ -117,36 +119,94 @@ namespace VietSportSystem.View.Staff.Receptionist
             foreach (DataRow r in dt.Rows)
             {
                 r["Chon"] = false;
-                r["SoLuongMua"] = 1;
+                r["SoLuongMua"] = 1; // Giá trị mặc định là 1
             }
 
+            // Đăng ký sự kiện để định dạng cột sau khi binding hoàn tất
+            grid.DataBindingComplete += Grid_DataBindingComplete;
+            
             grid.DataSource = dt;
+        }
 
-            // Định dạng cột hiển thị
-            grid.Columns["Chon"].HeaderText = "Chọn";
-            grid.Columns["Chon"].Width = 50;
-            grid.Columns["Chon"].DisplayIndex = 0;
+        private void Grid_DataBindingComplete(object sender, DataGridViewBindingCompleteEventArgs e)
+        {
+            // Định dạng cột hiển thị - lưu reference để tránh race condition
+            var colChon = grid.Columns.Contains("Chon") ? grid.Columns["Chon"] : null;
+            if (colChon != null)
+            {
+                colChon.HeaderText = "Chọn";
+                colChon.Width = 50;
+                colChon.DisplayIndex = 0;
+            }
 
-            grid.Columns["MaDichVu"].HeaderText = "Mã DV";
-            grid.Columns["MaDichVu"].ReadOnly = true;
+            var colMaDV = grid.Columns.Contains("MaDichVu") ? grid.Columns["MaDichVu"] : null;
+            if (colMaDV != null)
+            {
+                colMaDV.HeaderText = "Mã DV";
+                colMaDV.ReadOnly = true;
+            }
 
-            grid.Columns["TenDichVu"].HeaderText = "Tên Dịch Vụ";
-            grid.Columns["TenDichVu"].ReadOnly = true;
+            var colTenDV = grid.Columns.Contains("TenDichVu") ? grid.Columns["TenDichVu"] : null;
+            if (colTenDV != null)
+            {
+                colTenDV.HeaderText = "Tên Dịch Vụ";
+                colTenDV.ReadOnly = true;
+            }
 
-            grid.Columns["DonGia"].HeaderText = "Đơn Giá";
-            grid.Columns["DonGia"].DefaultCellStyle.Format = "N0";
-            grid.Columns["DonGia"].ReadOnly = true;
+            var colDonGia = grid.Columns.Contains("DonGia") ? grid.Columns["DonGia"] : null;
+            if (colDonGia != null)
+            {
+                colDonGia.HeaderText = "Đơn Giá";
+                colDonGia.DefaultCellStyle.Format = "N0";
+                colDonGia.ReadOnly = true;
+            }
 
-            grid.Columns["DonViTinh"].HeaderText = "ĐVT";
-            grid.Columns["DonViTinh"].ReadOnly = true;
+            var colDonViTinh = grid.Columns.Contains("DonViTinh") ? grid.Columns["DonViTinh"] : null;
+            if (colDonViTinh != null)
+            {
+                colDonViTinh.HeaderText = "ĐVT";
+                colDonViTinh.ReadOnly = true;
+            }
 
-            grid.Columns["SoLuongTon"].HeaderText = "Tồn Kho";
-            grid.Columns["SoLuongTon"].ReadOnly = true;
-            grid.Columns["SoLuongTon"].DefaultCellStyle.ForeColor = Color.Red;
+            var colSoLuongTon = grid.Columns.Contains("SoLuongTon") ? grid.Columns["SoLuongTon"] : null;
+            if (colSoLuongTon != null)
+            {
+                colSoLuongTon.HeaderText = "Tồn Kho";
+                colSoLuongTon.ReadOnly = true;
+                colSoLuongTon.DefaultCellStyle.ForeColor = Color.Red;
+            }
 
-            grid.Columns["SoLuongMua"].HeaderText = "Số Lượng Mua";
-            grid.Columns["SoLuongMua"].DefaultCellStyle.BackColor = Color.LightYellow; // Tô màu ô nhập liệu
-            grid.Columns["SoLuongMua"].DisplayIndex = 7; // Đẩy về cuối
+            var colSoLuongMua = grid.Columns.Contains("SoLuongMua") ? grid.Columns["SoLuongMua"] : null;
+            if (colSoLuongMua != null)
+            {
+                colSoLuongMua.HeaderText = "Số Lượng Mua";
+                colSoLuongMua.DefaultCellStyle.BackColor = Color.LightYellow; // Tô màu ô nhập liệu
+                // Đặt DisplayIndex là cột cuối cùng (số cột - 1)
+                colSoLuongMua.DisplayIndex = grid.Columns.Count - 1;
+            }
+
+            // Validation: Số lượng mua phải >= 1
+            grid.CellValidating += (s, e) =>
+            {
+                if (grid.Columns[e.ColumnIndex].Name == "SoLuongMua")
+                {
+                    if (e.FormattedValue != null && !string.IsNullOrWhiteSpace(e.FormattedValue.ToString()))
+                    {
+                        if (int.TryParse(e.FormattedValue.ToString(), out int qty))
+                        {
+                            if (qty < 1)
+                            {
+                                e.Cancel = true;
+                                grid.Rows[e.RowIndex].ErrorText = "Số lượng mua phải >= 1";
+                            }
+                            else
+                            {
+                                grid.Rows[e.RowIndex].ErrorText = string.Empty;
+                            }
+                        }
+                    }
+                }
+            };
 
             // Logic tự động: Nếu là DV_VIP thì số lượng luôn là 1
             grid.CellEndEdit += (s, e) =>
@@ -180,11 +240,13 @@ namespace VietSportSystem.View.Staff.Receptionist
                     if (row.Cells["SoLuongMua"].Value != DBNull.Value)
                         int.TryParse(row.Cells["SoLuongMua"].Value.ToString(), out qty);
 
-                    if (qty <= 0) qty = 1; // Mặc định ít nhất là 1
+                    // Đảm bảo số lượng >= 1
+                    if (qty < 1) qty = 1;
 
                     // Validate tồn kho
                     int stock = Convert.ToInt32(row.Cells["SoLuongTon"].Value);
                     string tenDV = row.Cells["TenDichVu"].Value.ToString();
+                    string maDV = row.Cells["MaDichVu"].Value.ToString();
 
                     if (qty > stock)
                     {
@@ -193,9 +255,7 @@ namespace VietSportSystem.View.Staff.Receptionist
                         return; // Dừng lại không cho lưu
                     }
 
-                    // Logic đặc biệt cho VIP (nếu cần)
-                    string maDV = row.Cells["MaDichVu"].Value.ToString();
-                    if (string.Equals(maDV, "DV_VIP", StringComparison.OrdinalIgnoreCase)) qty = 1;
+                    // Logic đặc biệt cho VIP (nếu cần) - đã xử lý ở trên
 
                     // Thêm vào list kết quả
                     picked.Add(new ServiceItem

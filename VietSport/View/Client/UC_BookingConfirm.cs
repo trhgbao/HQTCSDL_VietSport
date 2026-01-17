@@ -73,8 +73,7 @@ namespace VietSportSystem
             // ================= CỘT TRÁI =================
             Panel pnlLeft = new Panel { Dock = DockStyle.Fill };
             Label lblSan = new Label { Text = $"SÂN: {_sanInfo.TenSan}", Font = new Font("Segoe UI", 13, FontStyle.Bold), AutoSize = true, ForeColor = UIHelper.PrimaryColor };
-
-            lblGia = new Label { Text = $"Đơn giá: {_sanInfo.GiaTien:N0} VNĐ/giờ", Location = new Point(0, 30), AutoSize = true, Font = new Font("Segoe UI", 11, FontStyle.Italic) };
+            Label lblGia = new Label { Text = $"Đơn giá: {_sanInfo.GiaTien:N0} VNĐ/giờ", Location = new Point(0, 30), AutoSize = true, Font = new Font("Segoe UI", 11, FontStyle.Italic) };
 
             GroupBox grpTime = new GroupBox { Text = "Thời gian đặt", Location = new Point(0, 70), Size = new Size(480, 100), Font = new Font("Segoe UI", 10) };
             Label lblS = new Label { Text = "Bắt đầu:", Location = new Point(20, 35), AutoSize = true };
@@ -378,6 +377,7 @@ namespace VietSportSystem
 
                     if (!string.IsNullOrEmpty(msg))
                     {
+                        // Lỗi thật hoặc Demo thất bại -> Dừng
                         MessageBox.Show(msg, "Không thể đặt sân", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
@@ -388,6 +388,7 @@ namespace VietSportSystem
                 // -----------------------------------------------------------
                 foreach (var item in _selectedServices)
                 {
+                    // [LOGIC VU] Nếu là VIP -> Bỏ qua ở đây, xử lý sau ở bước Thanh toán
                     if (string.Equals(item.MaDV, "DV_VIP", StringComparison.OrdinalIgnoreCase)) continue;
 
                     string? msgDV;
@@ -411,6 +412,7 @@ namespace VietSportSystem
                 bool hasVip = _selectedServices.Any(s => string.Equals(s.MaDV, "DV_VIP", StringComparison.OrdinalIgnoreCase));
                 if (hasVip)
                 {
+                    // Lưu trạng thái vào Context để màn hình Payment xử lý tranh chấp 14
                     BookingContext.VipSelected = true;
                     BookingContext.VipStart = dtpEnd.Value;
                     BookingContext.VipEnd = dtpEnd.Value.AddMinutes(30);

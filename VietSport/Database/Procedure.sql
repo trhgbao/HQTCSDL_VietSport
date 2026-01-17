@@ -1106,46 +1106,21 @@ GO
 
 CREATE OR ALTER PROCEDURE Usp_DuyetNghiPhep
     @MaDon INT,
-    @TrangThaiDuyet NVARCHAR(20),
-    @UseLock BIT = 1  -- 1: An toàn, 0: Gây lỗi
+    @TrangThaiDuyet NVARCHAR(20)
 AS
 BEGIN
-    SET NOCOUNT ON;
-
+    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;  -- Chống lost update
     BEGIN TRANSACTION;
     BEGIN TRY
-        -- =============================================================
-        -- PHÂN TÁCH LOGIC KHÓA RÕ RÀNG
-        -- =============================================================
-        
-        IF @UseLock = 1 
-        BEGIN
-            -- TRƯỜNG HỢP AN TOÀN (FIX BUG)
-            -- Dùng Repeatable Read + UPDLOCK để giữ chỗ, người khác phải chờ
-            SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-            
-            SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
-            WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
-        END
-        ELSE
-        BEGIN
-            -- TRƯỜNG HỢP GÂY LỖI (DEMO)
-            -- Dùng Read Committed: Đọc xong nhả khóa ngay -> Người khác chen vào Update được
-            SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-            
-            SELECT * FROM PhanCongCaTruc 
-            WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
-        END
+        -- Lock ca trực liên quan để tránh concurrent update
+        SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
+        WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
 
-        -- =============================================================
-        -- GIẢ LẬP ĐỘ TRỄ (Để T2 kịp chen vào sửa trong lúc T1 đang chạy)
-        -- =============================================================
-        WAITFOR DELAY '00:00:10';
-
-        -- Cập nhật trạng thái
+		WAITFOR DELAY '00:00:10';
+        -- Update trạng thái duyệt
         UPDATE DonNghiPhep SET TrangThaiDuyet = @TrangThaiDuyet WHERE MaDon = @MaDon;
 
-        -- Logic nghiệp vụ phụ (cập nhật lịch trực)
+        -- Nếu duyệt, update ca trực thay thế
         IF @TrangThaiDuyet = N'Đã duyệt'
         BEGIN
             UPDATE PhanCongCaTruc SET MaNhanVien = d.MaNguoiThayThe 
@@ -1153,12 +1128,11 @@ BEGIN
             WHERE d.MaDon = @MaDon;
         END
 
-        COMMIT TRANSACTION;
+        COMMIT;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        DECLARE @Msg NVARCHAR(MAX) = ERROR_MESSAGE();
-        RAISERROR(@Msg, 16, 1);
+        ROLLBACK;
+        THROW;
     END CATCH
 END;
 GO
