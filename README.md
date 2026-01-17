@@ -1,15 +1,4 @@
-Chức năng chính
-Hệ thống phân quyền chi tiết cho 6 đối tượng:
-1.  **Khách hàng:** Tìm kiếm sân, Đặt sân (Online/QR Code), Xem lịch sử.
-2.  **Admin (Quản trị):** Cấu hình tham số hệ thống, Bảng giá, Quản lý hồ sơ nhân viên.
-3.  **Quản lý (Manager):** Phân ca trực, Duyệt nghỉ phép, Xem báo cáo thống kê.
-4.  **Lễ tân:** Check-in khách đến, Đặt sân trực tiếp, Hủy sân.
-5.  **Thu ngân:** Tìm phiếu đặt, Thanh toán, In hóa đơn.
-6.  **Kỹ thuật:** Cập nhật trạng thái sân (Bảo trì/Hoạt động).
-
-## ⚙️ HƯỚNG DẪN CÀI ĐẶT  
-
-Thành viên nhóm vui lòng làm theo đúng thứ tự để không bị lỗi.
+HƯỚNG DẪN CÀI ĐẶT  
 
 ### Bước 1: Cấu hình Cơ sở dữ liệu (SQL Server)
 1.  Mở **SQL Server Management Studio (SSMS)**.
