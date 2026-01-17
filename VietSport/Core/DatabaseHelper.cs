@@ -7,7 +7,9 @@ namespace VietSportSystem
     public static class DatabaseHelper
     {
         // CẤU HÌNH KẾT NỐI
-        public static string ServerName = @".\MSSQLSERVER01"; // Named instance
+        // public static string ServerName = @".\MSSQLSERVER01"; 
+        public static string ServerName = @"localhost\MSSQL_NEW"; 
+
         public static string DbName = "VietSportDB";
 
         public static string ConnectionString => $"Data Source={ServerName};Initial Catalog={DbName};Integrated Security=True";
