@@ -809,7 +809,6 @@ BEGIN
     END CATCH
 END
 GO
-
 -- =============================================================
 -- TỪ FILE: 9-Proc.sql
 -- (Scenario 9: Non-Repeatable Read - Chính sách giá vs Thanh toán)
