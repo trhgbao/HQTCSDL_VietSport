@@ -8,6 +8,9 @@ namespace VietSportSystem
 {
     /// <summary>
     /// Màn hình Quản lý xem trạng thái sân - dùng cho Scenario 10 T2
+    /// Theo tài liệu 9-10.md:
+    /// Tick "Fix Mode" = READ COMMITTED → phải chờ T1, thấy data cũ (không Dirty Read)
+    /// Không tick = READ UNCOMMITTED → thấy Dirty Data
     /// </summary>
     public class UC_Manager_CourtStatus : UserControl
     {
@@ -15,7 +18,6 @@ namespace VietSportSystem
         private DataGridView gridSan;
         private CheckBox chkFixMode;
         private Button btnRefresh;
-        private Label lblResult;
 
         public UC_Manager_CourtStatus()
         {
@@ -46,20 +48,22 @@ namespace VietSportSystem
             Label lblCoSo = new Label { Text = "Chọn cơ sở:", Location = new Point(20, 25), AutoSize = true };
             cboCoSo = new ComboBox { Location = new Point(100, 22), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
 
+            // Checkbox Fix Mode - theo tài liệu 9-10.md
+            // Tick = Fix Mode: READ COMMITTED → phải chờ T1
+            // Không tick = Demo Error: READ UNCOMMITTED → thấy Dirty Data
             chkFixMode = new CheckBox
             {
-                Text = "Fix Mode (Read Committed - Chờ T1 commit)",
+                Text = "Fix Mode (READ COMMITTED - chờ T1)",
                 Location = new Point(320, 25),
                 AutoSize = true,
+                Checked = false, // Mặc định là Demo Error
                 ForeColor = Color.Blue,
                 Font = new Font("Segoe UI", 9, FontStyle.Italic)
             };
 
-            btnRefresh = new Button { Text = "Xem trạng thái sân", Location = new Point(600, 20), Size = new Size(150, 35) };
+            btnRefresh = new Button { Text = "Xem trạng thái sân", Location = new Point(20, 60), Size = new Size(150, 35) };
             UIHelper.StyleButton(btnRefresh, true);
             btnRefresh.Click += BtnRefresh_Click;
-
-            // lblResult = new Label { Text = "", Location = new Point(20, 65), AutoSize = true, ForeColor = Color.DarkGreen };
 
             pnlControls.Controls.AddRange(new Control[] { lblCoSo, cboCoSo, chkFixMode, btnRefresh });
 
@@ -104,16 +108,29 @@ namespace VietSportSystem
             }
 
             string maCoSo = cboCoSo.SelectedValue.ToString();
+            
+            // Đọc trạng thái Fix Mode từ checkbox
+            // Tick (isFixMode = true) = Fix Mode → READ COMMITTED → phải chờ
+            // Không tick (isFixMode = false) = Demo Error → READ UNCOMMITTED → thấy Dirty Data
             bool isFixMode = chkFixMode.Checked;
 
-            // lblResult.Text = "Đang tải dữ liệu...";
-            // lblResult.ForeColor = Color.Orange;
+            // Hiển thị trạng thái đang chờ
+            btnRefresh.Enabled = false;
+            if (isFixMode)
+            {
+                btnRefresh.Text = "Đang chờ T1 (READ COMMITTED)...";
+            }
+            else
+            {
+                btnRefresh.Text = "Đang đọc (READ UNCOMMITTED)...";
+            }
             Application.DoEvents();
 
             try
             {
-                // Call SP based on mode
-                string spName = isFixMode ? "sp_XemThongTinSan_DaFix" : "sp_XemThongTinSan_CoLoi";
+                // Tick (Fix Mode): sp_XemThongTinSan_AnToan (READ COMMITTED) → phải chờ T1 xong
+                // Không tick (Demo Error): sp_XemThongTinSan_CoLoi (READ UNCOMMITTED) → thấy Dirty Data
+                string spName = isFixMode ? "sp_XemThongTinSan_AnToan" : "sp_XemThongTinSan_CoLoi";
 
                 using (SqlConnection conn = DatabaseHelper.GetConnection())
                 {
@@ -121,7 +138,7 @@ namespace VietSportSystem
                     using (SqlCommand cmd = new SqlCommand(spName, conn))
                     {
                         cmd.CommandType = CommandType.StoredProcedure;
-                        cmd.CommandTimeout = 60; // Wait up to 60s for T1 to finish
+                        cmd.CommandTimeout = 60;
                         cmd.Parameters.AddWithValue("@MaCoSo", maCoSo);
 
                         SqlParameter outParam = new SqlParameter("@KetQua", SqlDbType.NVarChar, 500)
@@ -136,18 +153,17 @@ namespace VietSportSystem
                         adapter.Fill(dt);
 
                         gridSan.DataSource = dt;
-
-                        // string ketQua = outParam.Value?.ToString() ?? "";
-                        // lblResult.Text = ketQua;
-                        // lblResult.ForeColor = Color.DarkGreen;
                     }
                 }
             }
             catch (Exception ex)
             {
-                // lblResult.Text = "Lỗi: " + ex.Message;
-                // lblResult.ForeColor = Color.Red;
                 MessageBox.Show("Lỗi: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                btnRefresh.Enabled = true;
+                btnRefresh.Text = "Xem trạng thái sân";
             }
         }
     }
