@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Data;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Data.SqlClient;
@@ -273,13 +274,13 @@ namespace VietSportSystem
             }
             // ---------------------
 
-            // === DEMO MODE: Use original discount (simulates FIX - no price change) ===
+            // === DEMO MODE: Gọi Stored Procedure với REPEATABLE READ ===
+            // Theo 9-10.md: Sử dụng sp_ThanhToan_VoiLock để demo FIX
+            // Admin sẽ bị BLOCK khi cố sửa giảm giá trong lúc T1 đang xử lý
             if (chkDemoMode != null && chkDemoMode.Checked)
             {
-                // Demo mode: use the ORIGINAL discount captured when order was selected
-                // This simulates the FIX where we lock the discount at transaction start
-                // (No status message, just proceed with original values)
-                goto ProcessPayment;
+                ThanhToan_DemoMode();
+                return;
             }
 
             // === NORMAL MODE: Re-fetch discount and update if changed ===
@@ -304,11 +305,11 @@ namespace VietSportSystem
                 // Update display with new discount
                 _giamGia = currentDiscount;
                 _tongTien = _giaGoc * (100 - _giamGia) / 100;
-                
+
                 lblBillDiscount.Text = $"Giảm giá ({_hangTV}): {_giamGia}%";
                 lblBillDiscount.ForeColor = Color.Red;
                 lblBillTotal.Text = "Thành tiền: " + _tongTien.ToString("N0") + " VND";
-                
+
                 // Recalculate tiền thừa
                 if (decimal.TryParse(txtTienKhach.Text, out decimal tienKhach))
                 {
@@ -316,14 +317,12 @@ namespace VietSportSystem
                     lblBillThua.Text = "Tiền thừa: " + tienThua.ToString("N0") + " VND";
                     lblBillThua.ForeColor = tienThua >= 0 ? Color.Blue : Color.Red;
                 }
-                
+
                 MessageBox.Show($"⚠️ Giá đã thay đổi!\n\nGiảm giá mới: {_giamGia}%\nThành tiền: {_tongTien:N0} VND\n\nVui lòng kiểm tra lại trước khi thanh toán.", "Giá đã thay đổi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return; // Don't process payment yet, let user confirm new price
             }
 
-            ProcessPayment:
-
-            // Process payment with current price
+            // Process payment with current price (Normal mode - inline SQL)
             using (SqlConnection conn = DatabaseHelper.GetConnection())
             {
                 conn.Open();
@@ -331,7 +330,7 @@ namespace VietSportSystem
                 try
                 {
                     string maHD = "HD" + DateTime.Now.ToString("ddHHmm");
-                    string sqlHD = @"INSERT INTO HoaDon (MaHoaDon, MaPhieuDat, MaNhanVien, TongTien, GhiChu) 
+                    string sqlHD = @"INSERT INTO HoaDon (MaHoaDon, MaPhieuDat, MaNhanVien, TongTien, GhiChu)
                               VALUES (@Ma, @Phieu, @NV, @Tien, N'Thanh toán tại quầy')";
 
                     SqlCommand cmd = new SqlCommand(sqlHD, conn, trans);
@@ -356,6 +355,64 @@ namespace VietSportSystem
                     trans.Rollback();
                     MessageBox.Show("Lỗi: " + ex.Message);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Thanh toán với Stored Procedure - Demo Mode cho Scenario 9
+        /// Theo 9-10.md: Sử dụng REPEATABLE READ để giữ Shared Lock
+        /// Admin sẽ bị BLOCK nếu cố cập nhật giảm giá trong lúc thanh toán
+        /// </summary>
+        private void ThanhToan_DemoMode()
+        {
+            lblDemoStatus.Text = "Đang xử lý với REPEATABLE READ...";
+            lblDemoStatus.ForeColor = Color.Orange;
+            btnConfirm.Enabled = false;
+            Application.DoEvents();
+
+            try
+            {
+                using (SqlConnection conn = DatabaseHelper.GetConnection())
+                {
+                    conn.Open();
+
+                    // Gọi stored procedure sp_ThanhToan_VoiLock
+                    // SP này sử dụng REPEATABLE READ và WAITFOR DELAY 10s
+                    // Trong thời gian này, Admin sẽ bị BLOCK nếu cố sửa ChinhSachGiamGia
+                    using (SqlCommand cmd = new SqlCommand("sp_ThanhToan_VoiLock", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.CommandTimeout = 60; // Cho phép SP chạy đến 60s (vì có WAITFOR DELAY 10s)
+
+                        cmd.Parameters.AddWithValue("@MaPhieu", _maPhieu);
+                        cmd.Parameters.AddWithValue("@TienKhachDua", decimal.TryParse(txtTienKhach.Text, out decimal tien) ? tien : 0);
+                        cmd.Parameters.AddWithValue("@MaNV", SessionData.CurrentUserID ?? "DEMO");
+
+                        SqlParameter outParam = new SqlParameter("@KetQua", SqlDbType.NVarChar, 500)
+                        {
+                            Direction = ParameterDirection.Output
+                        };
+                        cmd.Parameters.Add(outParam);
+
+                        cmd.ExecuteNonQuery();
+
+                        string ketQua = outParam.Value?.ToString() ?? "Hoàn tất";
+
+                        lblDemoStatus.Text = ketQua;
+                        lblDemoStatus.ForeColor = Color.Green;
+
+                        MessageBox.Show(ketQua, "Demo Mode - Kết quả", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                        btnPrint.Enabled = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                lblDemoStatus.Text = "Lỗi: " + ex.Message;
+                lblDemoStatus.ForeColor = Color.Red;
+                MessageBox.Show("Lỗi Demo Mode: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                btnConfirm.Enabled = true;
             }
         }
 
