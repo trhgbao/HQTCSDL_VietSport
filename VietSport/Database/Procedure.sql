@@ -6,84 +6,56 @@ GO
 -- (Demo cơ bản về đặt sân có lỗi và đã fix)
 -- =============================================================
 
-CREATE OR ALTER PROCEDURE sp_DatSan_Demo_Loi
+CREATE OR ALTER PROCEDURE sp_DatSan_Scenario1
     @MaKhachHang VARCHAR(10),
     @MaSan VARCHAR(10),
     @GioBatDau DATETIME,
     @GioKetThuc DATETIME,
-    @MaPhieuDat VARCHAR(10)
+    @MaPhieuDat VARCHAR(10),
+    @IsFix BIT -- 0: Chạy Lỗi (Read Committed), 1: Chạy Fix (Serializable)
 AS
 BEGIN
-    SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+    -- 1. Cấu hình mức độ cô lập dựa trên tham số @IsFix
+    IF @IsFix = 1
+    BEGIN
+        -- [FIX]: Serializable sẽ khóa phạm vi (Range Lock), không cho ai chèn vào khung giờ này
+        SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; 
+    END
+    ELSE
+    BEGIN
+        -- [LỖI]: Read Committed chỉ khóa dòng đang đọc, không khóa khoảng trống -> Bị Phantom Read
+        SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+    END
 
     BEGIN TRAN
-        
-        DECLARE @DemSoLuong INT;
-        SELECT @DemSoLuong = COUNT(*)
-        FROM PhieuDatSan
-        WHERE MaSan = @MaSan
-          AND (
-              (@GioBatDau >= GioBatDau AND @GioBatDau < GioKetThuc) 
-              OR 
-              (@GioKetThuc > GioBatDau AND @GioKetThuc <= GioKetThuc) 
-              OR
-              (@GioBatDau <= GioBatDau AND @GioKetThuc >= GioKetThuc) 
-          );
-
-        WAITFOR DELAY '00:00:10'; 
-
-        IF (@DemSoLuong = 0)
-        BEGIN
-            INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, GioBatDau, GioKetThuc, KenhDat, TrangThaiThanhToan)
-            VALUES (@MaPhieuDat, @MaKhachHang, @MaSan, @GioBatDau, @GioKetThuc, 'Online', N'Chưa thanh toán');
-            
-            -- Trả về thành công
-            SELECT 1 AS KetQua, N'Đặt sân thành công (Lỗi Demo)' AS ThongBao;
-        
-        END
-        ELSE
-        BEGIN
-            -- Trả về thất bại
-            SELECT 0 AS KetQua, N'Sân đã bị trùng giờ!' AS ThongBao;
-        END
-
-    COMMIT TRAN
-END
-GO
-
-CREATE OR ALTER PROCEDURE sp_DatSan_Demo_Fix
-    @MaKhachHang VARCHAR(10),
-    @MaSan VARCHAR(10),
-    @GioBatDau DATETIME,
-    @GioKetThuc DATETIME,
-    @MaPhieuDat VARCHAR(10)
-AS
-BEGIN
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; 
-
-    BEGIN TRAN
-        
         BEGIN TRY
+            -- Kiểm tra xem có ai đặt chưa
             DECLARE @DemSoLuong INT;
+            
+            -- [SERIALIZABLE] sẽ giữ Range Lock tại đây
             SELECT @DemSoLuong = COUNT(*)
             FROM PhieuDatSan
             WHERE MaSan = @MaSan
               AND (
-                  (@GioBatDau >= GioBatDau AND @GioBatDau < GioKetThuc)
+                  (@GioBatDau >= GioBatDau AND @GioBatDau < GioKetThuc) 
                   OR 
-                  (@GioKetThuc > GioBatDau AND @GioKetThuc <= GioKetThuc)
+                  (@GioKetThuc > GioBatDau AND @GioKetThuc <= GioKetThuc) 
                   OR
-                  (@GioBatDau <= GioBatDau AND @GioKetThuc >= GioKetThuc)
+                  (@GioBatDau <= GioBatDau AND @GioKetThuc >= GioKetThuc) 
               );
 
+            -- Giả lập độ trễ để người thứ 2 kịp chen vào
             WAITFOR DELAY '00:00:10'; 
 
             IF (@DemSoLuong = 0)
             BEGIN
+                -- Nếu chưa ai đặt thì chèn
                 INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, GioBatDau, GioKetThuc, KenhDat, TrangThaiThanhToan)
                 VALUES (@MaPhieuDat, @MaKhachHang, @MaSan, @GioBatDau, @GioKetThuc, 'Online', N'Chưa thanh toán');
                 
-                SELECT 1 AS KetQua, N'Đặt sân thành công (Đã Fix)' AS ThongBao;
+                -- Trả về thông báo tùy theo mode
+                DECLARE @Msg NVARCHAR(100) = CASE WHEN @IsFix = 1 THEN N'Đặt sân thành công (Mode: Fix)' ELSE N'Đặt sân thành công (Mode: Lỗi)' END;
+                SELECT 1 AS KetQua, @Msg AS ThongBao;
             END
             ELSE
             BEGIN
@@ -193,131 +165,80 @@ GO
 CREATE OR ALTER PROCEDURE Usp_TinhGiaSan
     @MaSan VARCHAR(10),
     @KhungGio NVARCHAR(50),
-    @GiaThue DECIMAL(18,0) OUTPUT -- Đã sửa thành decimal(18,0) cho khớp với tiền VNĐ
+    @GiaThue DECIMAL(10,2) OUTPUT -- Đã sửa: Đưa kiểu dữ liệu lên trước chữ OUTPUT
 AS
 BEGIN
-    SET NOCOUNT ON;
-    
-    -- QUAN TRỌNG: Mức độ này giữ Shared Lock đến khi hết Transaction
-    -- Người khác đọc được, nhưng không sửa được (Sửa sẽ bị treo chờ)
+    SET NOCOUNT ON; -- Thêm dòng này để tối ưu, không trả về số dòng bị ảnh hưởng
     SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     
     BEGIN TRANSACTION;
     BEGIN TRY
-        -- BƯỚC 1: Đọc giá (SQL tự đánh dấu Shared Lock dòng này)
         SELECT @GiaThue = DonGia 
-        FROM GiaThueSan
+        FROM GiaThueSan WITH (UPDLOCK) -- Giữ nguyên logic lock của bạn
         WHERE MaCoSo = (SELECT MaCoSo FROM SanTheThao WHERE MaSan = @MaSan)
         AND LoaiSan = (SELECT LoaiSan FROM SanTheThao WHERE MaSan = @MaSan)
         AND KhungGio = @KhungGio;
 
         IF @GiaThue IS NULL
         BEGIN
-            -- Nếu không có giá thì rollback ngay
-            RAISERROR(N'Không tìm thấy giá quy định.', 16, 1);
+            -- Lưu ý: RAISERROR với severity 16 sẽ nhảy xuống CATCH block ngay lập tức
+            -- nên ta cần rollback trong CATCH hoặc check xact_state
+            RAISERROR(N'Không tìm thấy giá cho sân/khung giờ này', 16, 1);
         END
-
-        -- BƯỚC 2: Giả lập thời gian xem xét/xử lý (10 giây)
-        -- Trong 10s này, Shared Lock vẫn được giữ.
-        -- Nếu T2 chạy UPDATE vào lúc này -> T2 sẽ bị TREO (BLOCKED)
-        WAITFOR DELAY '00:00:10';
-
-        -- BƯỚC 3: Kết thúc (Lúc này mới nhả khóa cho T2 sửa)
+	WAITFOR DELAY '00:00:10';
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW; -- Ném lỗi ra C# xử lý
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+            
+        -- Ném lỗi ra ngoài để ứng dụng biết
+        THROW;
     END CATCH
 END;
 GO
-
 -- =============================================================
 -- TỪ FILE: 4-Proc.sql
 -- (Hủy đặt sân với Lost Update protection)
 -- =============================================================
 
-CREATE OR ALTER PROCEDURE Usp_HuyDatSan
-    @MaPhieuDat VARCHAR(10)
+
+CREATE OR ALTER PROCEDURE sp_HuyDatSan
+    @MaPhieuDat VARCHAR(10),
+    @IsFix BIT -- 0: Demo (Rollback), 1: Chạy Thật (Commit)
 AS
 BEGIN
-    SET NOCOUNT ON;
+    -- Writer luôn giữ khóa độc quyền (Exclusive Lock) khi Update
     SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+    
+    BEGIN TRAN
 
-    -- Khai báo biến lưu thông tin phiếu
-    DECLARE @MaSan VARCHAR(10);
-    DECLARE @GioBatDau DATETIME;
-    DECLARE @GioKetThuc DATETIME;
-    DECLARE @DaHuy BIT;
+    -- 1. Update trạng thái (Gây dữ liệu bẩn) -> Dòng này bị KHÓA
+    UPDATE PhieuDatSan 
+    SET DaHuy = 1 
+    WHERE MaPhieuDat = @MaPhieuDat;
 
-    BEGIN TRANSACTION;
-    BEGIN TRY
-        -- BƯỚC 1: Lấy thông tin và LOCK dòng dữ liệu để xử lý an toàn
-        SELECT 
-            @MaSan = MaSan,
-            @GioBatDau = GioBatDau,
-            @GioKetThuc = GioKetThuc,
-            @DaHuy = DaHuy
-        FROM PhieuDatSan WITH (UPDLOCK, ROWLOCK) -- Khóa dòng này lại, không cho ai sửa
-        WHERE MaPhieuDat = @MaPhieuDat;
+    -- 2. Giữ khóa trong 10 giây (Để Máy 2 có cơ hội vào đọc)
+    WAITFOR DELAY '00:00:10';
 
-		WAITFOR DELAY '00:00:10';
-        -- Kiểm tra tồn tại
-        IF @MaSan IS NULL
-        BEGIN
-            RAISERROR(N'Không tìm thấy phiếu đặt sân.', 16, 1);
-            ROLLBACK;
-            RETURN;
-        END
-
-        -- Kiểm tra nếu đã hủy rồi thì không làm gì cả (Idempotent)
-        IF @DaHuy = 1
-        BEGIN
-            COMMIT;
-            RETURN;
-        END
-
-        -- BƯỚC 2: Cập nhật trạng thái Hủy (Logic mới)
-        -- Chỉ bật cờ DaHuy = 1, giữ nguyên TrangThaiThanhToan để đối soát tiền nong sau này
-        UPDATE PhieuDatSan 
-        SET DaHuy = 1
-        WHERE MaPhieuDat = @MaPhieuDat;
-
-        -- BƯỚC 3: Giải phóng lịch đặt (Để người khác có thể đặt slot này)
-        UPDATE ThoiGianDat 
-        SET TinhTrangDat = N'Còn trống' 
-        WHERE MaSan = @MaSan 
-          AND GioBatDau = @GioBatDau;
-
-        -- BƯỚC 4: Cập nhật trạng thái sân thực tế (Chỉ nếu đang diễn ra ngay lúc này)
-        -- Nếu phiếu đặt cho tuần sau thì không cần đổi trạng thái sân hiện tại
-        IF (GETDATE() >= @GioBatDau AND GETDATE() <= @GioKetThuc)
-        BEGIN
-            UPDATE SanTheThao 
-            SET TinhTrang = N'Còn trống' 
-            WHERE MaSan = @MaSan;
-        END
-
-        -- Commit giao dịch
+    -- 3. Kết thúc Transaction
+    IF @IsFix = 0
+    BEGIN
+        -- Tích Checkbox -> Giả vờ lỗi -> Rollback (Dữ liệu quay về cũ)
+        ROLLBACK; 
+    END
+    ELSE
+    BEGIN
+        -- Không tích -> Chạy thật -> Commit (Dữ liệu đổi luôn)
         COMMIT;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 
-            ROLLBACK;
-        
-        -- Ném lỗi ra cho C# bắt
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-END;
-
+    END
+END
 GO
 
 -- =============================================================
 -- TỪ FILE: 5_6_13_16.sql
 -- (Bao gồm các Proc quản lý Giới hạn đặt, Kho, và Phantom Read)
 -- =============================================================
-
 
 CREATE OR ALTER PROCEDURE sp_ThueDungCu
     @MaDichVu VARCHAR(10),
@@ -328,6 +249,7 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
+			WAITFOR DELAY '00:00:05';
             DECLARE @TonKhoHienTai INT;
 
             -- 1. Đọc tồn kho và KHÓA CẬP NHẬT dòng này (UPDLOCK)
@@ -357,7 +279,7 @@ BEGIN
             WHERE MaDichVu = @MaDichVu;
 
         COMMIT TRAN;
-        PRINT N'Thuê dụng cụ thành công. Tồn kho còn lại: ' + CAST((@TonKhoHienTai - @SoLuongThue) AS NVARCHAR);
+        PRINT N'Thuê dụng cụ thành công.';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRAN;
@@ -380,6 +302,7 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
+			WAITFOR DELAY '00:00:05';
             -- 1. Lấy MaCoSo từ sân để tìm giới hạn phù hợp
             DECLARE @MaCoSo VARCHAR(10);
             SELECT @MaCoSo = MaCoSo FROM SanTheThao WHERE MaSan = @MaSan;
@@ -411,7 +334,7 @@ BEGIN
                 RAISERROR(N'Khách hàng đã đạt giới hạn đặt sân trong ngày.', 16, 1);
                 RETURN;
             END
-
+			
             -- 5. Kiểm tra trùng giờ
             IF EXISTS (SELECT 1 FROM PhieuDatSan 
                        WHERE MaSan = @MaSan 
@@ -451,6 +374,7 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
+			WAITFOR DELAY '00:00:04';
             DECLARE @TonKhoHienTai INT;
 
             -- Sử dụng UPDLOCK để khóa dòng dữ liệu khi đọc
@@ -472,46 +396,6 @@ BEGIN
 
         COMMIT TRAN;
         PRINT N'Nhập kho thành công.';
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_TimKiemSanTrong
-    @GioBatDau DATETIME,
-    @GioKetThuc DATETIME,
-    @LoaiSan NVARCHAR(50)
-AS
-BEGIN
-    -- Mức cô lập SERIALIZABLE để chặn Phantom Insert (người khác chèn phiếu đặt vào giữa lúc đang tìm)
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-    BEGIN TRY
-        BEGIN TRAN
-            -- Giả lập độ trễ nếu cần test concurrency
-            -- WAITFOR DELAY '00:00:05';
-
-            SELECT s.MaSan, s.LoaiSan, s.SucChua, s.TinhTrang
-            FROM SanTheThao s
-            WHERE s.LoaiSan = @LoaiSan
-              AND s.TinhTrang = N'Còn trống'
-              AND NOT EXISTS (
-                  SELECT 1 
-                  FROM PhieuDatSan p
-                  WHERE p.MaSan = s.MaSan
-                  AND p.TrangThaiThanhToan != N'Đã hủy'
-                  AND (
-                       (@GioBatDau >= p.GioBatDau AND @GioBatDau < p.GioKetThuc)
-                    OR (@GioKetThuc > p.GioBatDau AND @GioKetThuc <= p.GioKetThuc)
-                    OR (p.GioBatDau >= @GioBatDau AND p.GioKetThuc <= @GioKetThuc)
-                  )
-              );
-              
-        COMMIT TRAN;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRAN;
@@ -1278,6 +1162,7 @@ BEGIN
     END CATCH
 END;
 GO
+
 -- =============================================================
 -- TỪ FILE: 14-Proc.sql
 -- (Scenario 14: Double Booking VIP Room)
