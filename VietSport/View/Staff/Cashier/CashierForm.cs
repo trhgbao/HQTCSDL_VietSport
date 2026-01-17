@@ -25,12 +25,12 @@ namespace VietSportSystem
             // 1. Logo (Bên trái)
             Label lblLogo = new Label { Text = "HỆ THỐNG VIỆTSPORT", Font = new Font("Segoe UI", 14, FontStyle.Bold), Location = new Point(20, 15), AutoSize = true };
 
-            // 2. Tên User (Cách phải 400)
+            // 2. Tên User (Cách phải 500)
             Label lblUser = new Label
             {
                 Text = "Thu ngân: " + SessionData.CurrentUserFullName,
                 AutoSize = true,
-                Location = new Point(this.Width - 400, 20), // Dời sang trái xíu
+                Location = new Point(this.Width - 500, 20), // Dời sang trái nhiều hơn
                 Font = new Font("Segoe UI", 10, FontStyle.Bold)
             };
 

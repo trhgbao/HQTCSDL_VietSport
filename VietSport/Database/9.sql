@@ -1,0 +1,301 @@
+USE VietSportDB;
+GO
+
+-- ===========================================================
+-- TINH HUONG 9: NON-REPEATABLE READ
+-- Mo ta: Khach H (Platinum) thay giam 20%. Quan ly doi thanh 15%.
+--        Khi H thanh toan, gia bi tinh la 15% khac voi luc xem.
+-- ===========================================================
+
+-- ===========================================================
+-- PHAN 1: SETUP DU LIEU (Mock Data)
+-- ===========================================================
+
+-- 1. Tao bang ChinhSachGiamGia
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ChinhSachGiamGia')
+BEGIN
+    CREATE TABLE ChinhSachGiamGia (
+        MaChinhSach INT IDENTITY(1,1) PRIMARY KEY,
+        HangTV NVARCHAR(20) NOT NULL UNIQUE CHECK (HangTV IN ('Standard', 'Silver', 'Gold', 'Platinum')),
+        GiamGia DECIMAL(5,2) NOT NULL CHECK (GiamGia >= 0 AND GiamGia <= 100),
+        NgayCapNhat DATETIME DEFAULT GETDATE()
+    );
+END
+
+-- 2. Reset Chinh Sach
+DELETE FROM ChinhSachGiamGia;
+INSERT INTO ChinhSachGiamGia (HangTV, GiamGia) VALUES
+('Standard', 0), ('Silver', 5), ('Gold', 10), ('Platinum', 15);
+GO
+
+-- 3. Tao Khach Hang H (Platinum)
+IF NOT EXISTS (SELECT * FROM KhachHang WHERE MaKhachHang = 'KH_H')
+BEGIN
+    INSERT INTO KhachHang (MaKhachHang, HoTen, NgaySinh, SoDienThoai, Email, CapBacThanhVien, CMND, GioiTinh)
+    VALUES ('KH_H', N'Nguyen Van H', '1990-05-15', '0901234567', 'khachhang.h@gmail.com', 'Platinum', '079090001234', N'Nam');
+END
+
+-- 4. Tao Co So va San
+IF NOT EXISTS (SELECT * FROM CoSo WHERE MaCoSo = 'CS_HCM01')
+    INSERT INTO CoSo (MaCoSo, TenCoSo, DiaChi, ThanhPho) VALUES ('CS_HCM01', N'VietSport Quan 1', N'123 Nguyen Hue', N'HCM');
+
+IF NOT EXISTS (SELECT * FROM SanTheThao WHERE MaSan = 'SAN01')
+    INSERT INTO SanTheThao (MaSan, MaCoSo, LoaiSan, SucChua, TinhTrang, GhiChu)
+    VALUES ('SAN01', 'CS_HCM01', N'Bong da mini', 10, N'Con trong', N'San bong da mini so 1');
+
+-- 5. Tao Phieu Dat PDS_TH9
+DELETE FROM PhieuDatSan WHERE MaPhieuDat = 'PDS_TH9';
+INSERT INTO PhieuDatSan (MaPhieuDat, MaKhachHang, MaSan, MaNhanVien, GioBatDau, GioKetThuc, TrangThaiThanhToan, KenhDat)
+VALUES ('PDS_TH9', 'KH_H', 'SAN01', NULL, DATEADD(HOUR, 14, GETDATE()), DATEADD(HOUR, 16, GETDATE()), N'Chua thanh toan', 'Online');
+GO
+
+-- ===========================================================
+-- PHAN 2: BANG KHOA PHIEN (Session Lock)
+-- ===========================================================
+
+-- Tao bang khoa phien lam viec
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SessionLock')
+BEGIN
+    CREATE TABLE SessionLock (
+        LockName NVARCHAR(50) PRIMARY KEY,
+        LockedBy NVARCHAR(100),
+        LockedAt DATETIME DEFAULT GETDATE(),
+        ExpiresAt DATETIME
+    );
+END
+GO
+
+-- ===========================================================
+-- PHAN 3: STORED PROCEDURES - PHIEN BAN LOI
+-- ===========================================================
+
+-- T1 (Admin): Cap nhat chinh sach gia
+CREATE OR ALTER PROCEDURE sp_CapNhatChinhSachGia
+    @HangTV NVARCHAR(20),
+    @MucGiamMoi DECIMAL(5,2),
+    @KetQua NVARCHAR(200) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+    BEGIN TRY
+        BEGIN TRAN;
+        UPDATE ChinhSachGiamGia
+        SET GiamGia = @MucGiamMoi,
+            NgayCapNhat = GETDATE()
+        WHERE HangTV = @HangTV;
+        COMMIT;
+        SET @KetQua = N'Da cap nhat giam gia ' + @HangTV + N' thanh ' + CAST(@MucGiamMoi AS NVARCHAR) + N'%';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        SET @KetQua = N'Loi: ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
+
+-- T2 (Thu ngan): Thanh toan don hang - PHIEN BAN LOI (READ COMMITTED)
+CREATE OR ALTER PROCEDURE sp_ThanhToanDonHang_CoLoi
+    @MaKH VARCHAR(10),
+    @MaPhieuDat VARCHAR(10),
+    @KetQua NVARCHAR(500) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @HangTV NVARCHAR(20);
+    DECLARE @GiamGia1 DECIMAL(5,2);
+    DECLARE @GiamGia2 DECIMAL(5,2);
+    DECLARE @TongTienGoc DECIMAL(10,2) = 500000;
+    DECLARE @TongTienSauGiam DECIMAL(10,2);
+
+    -- SU DUNG READ COMMITTED (default) - SE BI LOI NON-REPEATABLE READ
+    SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+    BEGIN TRY
+        BEGIN TRAN;
+        SELECT @HangTV = CapBacThanhVien FROM KhachHang WHERE MaKhachHang = @MaKH;
+
+        -- LAN DOC 1
+        SELECT @GiamGia1 = GiamGia FROM ChinhSachGiamGia WHERE HangTV = @HangTV;
+
+        -- MO PHONG: Khach dang xem lai hoa don (10 giay) - Luc nay T1 chen vao update
+        WAITFOR DELAY '00:00:10';
+
+        -- LAN DOC 2
+        SELECT @GiamGia2 = GiamGia FROM ChinhSachGiamGia WHERE HangTV = @HangTV;
+
+        SET @TongTienSauGiam = @TongTienGoc * (100 - @GiamGia2) / 100;
+
+        IF @GiamGia1 <> @GiamGia2
+            SET @KetQua = N'LOI NON-REPEATABLE READ! Lan 1: ' + CAST(@GiamGia1 AS NVARCHAR) + N'%, Lan 2: ' + CAST(@GiamGia2 AS NVARCHAR) + N'%';
+        ELSE
+            SET @KetQua = N'Thanh toan thanh cong. Giam: ' + CAST(@GiamGia2 AS NVARCHAR) + N'%';
+
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        SET @KetQua = N'Loi: ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
+
+-- ===========================================================
+-- PHAN 4: STORED PROCEDURES - PHIEN BAN FIX
+-- ===========================================================
+
+-- Thu ngan bat dau tinh tien -> Khoa trang Giam gia
+CREATE OR ALTER PROCEDURE sp_LockDiscountPolicy
+    @MaNV NVARCHAR(50),
+    @KetQua NVARCHAR(200) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Xoa cac lock da het han (qua 60 giay)
+    DELETE FROM SessionLock WHERE ExpiresAt < GETDATE();
+
+    -- Kiem tra xem da co ai khoa chua
+    IF EXISTS (SELECT 1 FROM SessionLock WHERE LockName = 'DiscountPolicy')
+    BEGIN
+        SET @KetQua = N'Da co nguoi khac dang su dung';
+    END
+    ELSE
+    BEGIN
+        -- Tao lock moi (het han sau 60 giay)
+        INSERT INTO SessionLock (LockName, LockedBy, LockedAt, ExpiresAt)
+        VALUES ('DiscountPolicy', @MaNV, GETDATE(), DATEADD(SECOND, 60, GETDATE()));
+
+        SET @KetQua = N'Da khoa thanh cong';
+    END
+END;
+GO
+
+-- Thu ngan thanh toan xong -> Mo khoa
+CREATE OR ALTER PROCEDURE sp_UnlockDiscountPolicy
+    @MaNV NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM SessionLock WHERE LockName = 'DiscountPolicy' AND LockedBy = @MaNV;
+END;
+GO
+
+-- Admin kiem tra co bi khoa khong
+CREATE OR ALTER PROCEDURE sp_CheckDiscountPolicyLock
+    @IsLocked BIT OUTPUT,
+    @LockedBy NVARCHAR(100) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Xoa cac lock da het han
+    DELETE FROM SessionLock WHERE ExpiresAt < GETDATE();
+
+    -- Kiem tra lock
+    IF EXISTS (SELECT 1 FROM SessionLock WHERE LockName = 'DiscountPolicy')
+    BEGIN
+        SELECT @IsLocked = 1, @LockedBy = LockedBy
+        FROM SessionLock WHERE LockName = 'DiscountPolicy';
+    END
+    ELSE
+    BEGIN
+        SET @IsLocked = 0;
+        SET @LockedBy = NULL;
+    END
+END;
+GO
+
+-- Thanh toan an toan voi Lock UI (gia lock trong suot qua trinh)
+-- FIX: Tinh gia goc tu So gio x Don gia (khong hardcode 500000)
+CREATE OR ALTER PROCEDURE sp_ThanhToan_VoiLock
+    @MaPhieu NVARCHAR(20),
+    @TienKhachDua DECIMAL(18,2),
+    @MaNV NVARCHAR(50),
+    @KetQua NVARCHAR(500) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+
+    -- Lay gia tri TrangThaiThanhToan hop le tu DB (tranh loi encoding)
+    DECLARE @TrangThaiDaThanhToan NVARCHAR(50);
+    SELECT TOP 1 @TrangThaiDaThanhToan = TrangThaiThanhToan
+    FROM PhieuDatSan
+    WHERE TrangThaiThanhToan NOT LIKE N'%chua%' AND TrangThaiThanhToan NOT LIKE N'%coc%';
+
+    IF @TrangThaiDaThanhToan IS NULL
+        SET @TrangThaiDaThanhToan = N'Da thanh toan';
+
+    BEGIN TRY
+        -- Tao/gia han lock
+        DELETE FROM SessionLock WHERE LockName = 'DiscountPolicy';
+        INSERT INTO SessionLock (LockName, LockedBy, LockedAt, ExpiresAt)
+        VALUES ('DiscountPolicy', @MaNV, GETDATE(), DATEADD(SECOND, 60, GETDATE()));
+
+        BEGIN TRAN
+
+            DECLARE @GiamGia DECIMAL(5,2);
+            DECLARE @HangTV NVARCHAR(20);
+            DECLARE @GiaGoc DECIMAL(18,2);
+            DECLARE @GioBatDau DATETIME;
+            DECLARE @GioKetThuc DATETIME;
+            DECLARE @DonGia DECIMAL(18,2);
+            DECLARE @SoGio DECIMAL(5,2);
+
+            -- Lay thong tin phieu dat san va tinh gia goc
+            SELECT
+                @GiamGia = c.GiamGia,
+                @HangTV = k.CapBacThanhVien,
+                @GioBatDau = p.GioBatDau,
+                @GioKetThuc = p.GioKetThuc,
+                @DonGia = ISNULL(g.DonGia, 100000) -- Default 100k neu khong co gia
+            FROM PhieuDatSan p
+            JOIN KhachHang k ON p.MaKhachHang = k.MaKhachHang
+            JOIN ChinhSachGiamGia c ON k.CapBacThanhVien = c.HangTV
+            JOIN SanTheThao s ON p.MaSan = s.MaSan
+            LEFT JOIN GiaThueSan g ON s.MaCoSo = g.MaCoSo AND s.LoaiSan = g.LoaiSan
+            WHERE p.MaPhieuDat = @MaPhieu;
+
+            -- Tinh so gio thue (toi thieu 1 gio)
+            SET @SoGio = DATEDIFF(MINUTE, @GioBatDau, @GioKetThuc) / 60.0;
+            IF @SoGio < 1 SET @SoGio = 1;
+
+            -- Tinh gia goc = So gio x Don gia
+            SET @GiaGoc = @SoGio * @DonGia;
+
+            -- Delay 10s de demo (Admin se khong vao duoc trang Giam gia trong thoi gian nay)
+            WAITFOR DELAY '00:00:10';
+
+            DECLARE @ThanhTien DECIMAL(18,2) = @GiaGoc * (100 - @GiamGia) / 100;
+
+            UPDATE PhieuDatSan
+            SET TrangThaiThanhToan = @TrangThaiDaThanhToan
+            WHERE MaPhieuDat = @MaPhieu;
+
+        COMMIT TRAN;
+
+        -- Mo khoa sau khi xong
+        DELETE FROM SessionLock WHERE LockName = 'DiscountPolicy' AND LockedBy = @MaNV;
+
+        SET @KetQua = N'Thanh toan thanh cong! Gia goc: ' + FORMAT(@GiaGoc, 'N0') + N' VND, Giam gia: ' + CAST(@GiamGia AS NVARCHAR) + N'%, Thanh tien: ' + FORMAT(@ThanhTien, 'N0') + N' VND';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        DELETE FROM SessionLock WHERE LockName = 'DiscountPolicy' AND LockedBy = @MaNV;
+        SET @KetQua = N'Loi: ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
+
+PRINT N'=== SCENARIO 9: NON-REPEATABLE READ ==='
+PRINT N'- sp_CapNhatChinhSachGia: Admin cap nhat giam gia'
+PRINT N'- sp_ThanhToanDonHang_CoLoi: Thu ngan thanh toan (PHIEN BAN LOI)'
+PRINT N'- sp_LockDiscountPolicy: Khoa trang Giam gia'
+PRINT N'- sp_UnlockDiscountPolicy: Mo khoa trang Giam gia'
+PRINT N'- sp_CheckDiscountPolicyLock: Kiem tra khoa'
+PRINT N'- sp_ThanhToan_VoiLock: Thanh toan voi Lock (PHIEN BAN FIX)'
+PRINT N'  + Gia goc = So gio x Don gia (tu bang GiaThueSan)'
+PRINT N'  + Khong con hardcode 500000 VND'
+GO
