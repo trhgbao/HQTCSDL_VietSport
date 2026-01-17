@@ -312,7 +312,6 @@ GO
 -- (Bao gồm các Proc quản lý Giới hạn đặt, Kho, và Phantom Read)
 -- =============================================================
 
-
 CREATE OR ALTER PROCEDURE sp_ThueDungCu
     @MaDichVu VARCHAR(10),
     @SoLuongThue INT
@@ -322,6 +321,7 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
+			WAITFOR DELAY '00:00:05';
             DECLARE @TonKhoHienTai INT;
 
             -- 1. Đọc tồn kho và KHÓA CẬP NHẬT dòng này (UPDLOCK)
@@ -351,7 +351,7 @@ BEGIN
             WHERE MaDichVu = @MaDichVu;
 
         COMMIT TRAN;
-        PRINT N'Thuê dụng cụ thành công. Tồn kho còn lại: ' + CAST((@TonKhoHienTai - @SoLuongThue) AS NVARCHAR);
+        PRINT N'Thuê dụng cụ thành công.';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRAN;
@@ -374,6 +374,7 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
+			WAITFOR DELAY '00:00:05';
             -- 1. Lấy MaCoSo từ sân để tìm giới hạn phù hợp
             DECLARE @MaCoSo VARCHAR(10);
             SELECT @MaCoSo = MaCoSo FROM SanTheThao WHERE MaSan = @MaSan;
@@ -405,7 +406,7 @@ BEGIN
                 RAISERROR(N'Khách hàng đã đạt giới hạn đặt sân trong ngày.', 16, 1);
                 RETURN;
             END
-
+			
             -- 5. Kiểm tra trùng giờ
             IF EXISTS (SELECT 1 FROM PhieuDatSan 
                        WHERE MaSan = @MaSan 
@@ -445,6 +446,7 @@ BEGIN
 
     BEGIN TRY
         BEGIN TRAN
+			WAITFOR DELAY '00:00:04';
             DECLARE @TonKhoHienTai INT;
 
             -- Sử dụng UPDLOCK để khóa dòng dữ liệu khi đọc
@@ -466,46 +468,6 @@ BEGIN
 
         COMMIT TRAN;
         PRINT N'Nhập kho thành công.';
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-END;
-GO
-
-CREATE OR ALTER PROCEDURE sp_TimKiemSanTrong
-    @GioBatDau DATETIME,
-    @GioKetThuc DATETIME,
-    @LoaiSan NVARCHAR(50)
-AS
-BEGIN
-    -- Mức cô lập SERIALIZABLE để chặn Phantom Insert (người khác chèn phiếu đặt vào giữa lúc đang tìm)
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-    BEGIN TRY
-        BEGIN TRAN
-            -- Giả lập độ trễ nếu cần test concurrency
-            -- WAITFOR DELAY '00:00:05';
-
-            SELECT s.MaSan, s.LoaiSan, s.SucChua, s.TinhTrang
-            FROM SanTheThao s
-            WHERE s.LoaiSan = @LoaiSan
-              AND s.TinhTrang = N'Còn trống'
-              AND NOT EXISTS (
-                  SELECT 1 
-                  FROM PhieuDatSan p
-                  WHERE p.MaSan = s.MaSan
-                  AND p.TrangThaiThanhToan != N'Đã hủy'
-                  AND (
-                       (@GioBatDau >= p.GioBatDau AND @GioBatDau < p.GioKetThuc)
-                    OR (@GioKetThuc > p.GioBatDau AND @GioKetThuc <= p.GioKetThuc)
-                    OR (p.GioBatDau >= @GioBatDau AND p.GioKetThuc <= @GioKetThuc)
-                  )
-              );
-              
-        COMMIT TRAN;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRAN;

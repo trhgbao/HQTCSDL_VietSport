@@ -11,7 +11,7 @@ namespace VietSportSystem
         // =============================================================
 
         // Option A: Cấu hình của Nam
-        public static string ServerName = @"localhost\MSSQL_NEW";
+        public static string ServerName = @"DESKTOP-KLE6SON";
 
         // Option B: Cấu hình của Trí (Bỏ comment dòng dưới nếu dùng máy Trí)
         // public static string ServerName = @".\MSSQLSERVER01"; 
