@@ -25,7 +25,7 @@ namespace VietSportSystem
         private CheckBox chkDemoDirectVsOnline; // Demo 1: Direct vs Online (Procedure Gộp)
         private CheckBox chkDemoPhantom;        // Demo 5: Phantom Read
         private CheckBox chkDemoLostUpdate;     // Demo 6: Lost Update
-        private CheckBox chkNonRepeatableDemo;  // Demo 9: Non-Repeatable Read
+        private CheckBox chkNonRepeatableDemo;  // Demo 3: Non-Repeatable Read
 
         // Variables
         private decimal currentTotalCourt = 0;
