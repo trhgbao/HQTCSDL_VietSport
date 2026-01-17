@@ -1217,27 +1217,45 @@ GO
 CREATE OR ALTER PROCEDURE Usp_DuyetNghiPhep
     @MaDon INT,
     @TrangThaiDuyet NVARCHAR(20),
-    @UseLock BIT = 1  -- Param để demo lock (1 chống, 0 lỗi)
+    @UseLock BIT = 1  -- 1: An toàn, 0: Gây lỗi
 AS
 BEGIN
-    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    SET NOCOUNT ON;
+
     BEGIN TRANSACTION;
     BEGIN TRY
-        IF @UseLock = 1
+        -- =============================================================
+        -- PHÂN TÁCH LOGIC KHÓA RÕ RÀNG
+        -- =============================================================
+        
+        IF @UseLock = 1 
         BEGIN
+            -- TRƯỜNG HỢP AN TOÀN (FIX BUG)
+            -- Dùng Repeatable Read + UPDLOCK để giữ chỗ, người khác phải chờ
+            SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+            
             SELECT * FROM PhanCongCaTruc WITH (UPDLOCK) 
             WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
         END
         ELSE
-        {
+        BEGIN
+            -- TRƯỜNG HỢP GÂY LỖI (DEMO)
+            -- Dùng Read Committed: Đọc xong nhả khóa ngay -> Người khác chen vào Update được
+            SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+            
             SELECT * FROM PhanCongCaTruc 
             WHERE MaNhanVien = (SELECT MaNhanVien FROM DonNghiPhep WHERE MaDon = @MaDon);
-        }
+        END
 
-        -- Chèn WAITFOR để pause demo (T2 chen update trong 10s)
+        -- =============================================================
+        -- GIẢ LẬP ĐỘ TRỄ (Để T2 kịp chen vào sửa trong lúc T1 đang chạy)
+        -- =============================================================
         WAITFOR DELAY '00:00:10';
 
+        -- Cập nhật trạng thái
         UPDATE DonNghiPhep SET TrangThaiDuyet = @TrangThaiDuyet WHERE MaDon = @MaDon;
+
+        -- Logic nghiệp vụ phụ (cập nhật lịch trực)
         IF @TrangThaiDuyet = N'Đã duyệt'
         BEGIN
             UPDATE PhanCongCaTruc SET MaNhanVien = d.MaNguoiThayThe 
@@ -1245,15 +1263,15 @@ BEGIN
             WHERE d.MaDon = @MaDon;
         END
 
-        COMMIT;
+        COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
-        ROLLBACK;
-        THROW;
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        DECLARE @Msg NVARCHAR(MAX) = ERROR_MESSAGE();
+        RAISERROR(@Msg, 16, 1);
     END CATCH
 END;
 GO
-
 -- =============================================================
 -- TỪ FILE: 14-Proc.sql
 -- (Scenario 14: Double Booking VIP Room)
