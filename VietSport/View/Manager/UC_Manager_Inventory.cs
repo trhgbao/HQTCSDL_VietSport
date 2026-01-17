@@ -205,38 +205,37 @@ namespace VietSportSystem
                 }
                 else
                 {
-                    // Dùng SP chuẩn có UPDLOCK
+                    // Dùng SP chuẩn có UPDLOCK (trả về null khi thành công)
                     msg = DatabaseHelper.NhapKho(maDV, soLuong);
                 }
 
-                if (!string.IsNullOrEmpty(msg))
+                // Kiểm tra kết quả: msg == null nghĩa là thành công (cho NhapKho chuẩn)
+                bool isSuccess = msg == null || msg.Contains("Thành công", StringComparison.OrdinalIgnoreCase);
+                bool isDeadlock = msg != null && msg.Contains("Deadlock", StringComparison.OrdinalIgnoreCase);
+
+                if (isSuccess)
                 {
-                    bool isSuccess = msg.Contains("Thành công", StringComparison.OrdinalIgnoreCase);
-                    bool isDeadlock = msg.Contains("Deadlock", StringComparison.OrdinalIgnoreCase);
-
-                    if (isSuccess)
-                    {
-                        if (isConflictDemo)
-                            MessageBox.Show($"Demo Xung đột - Nhập kho:\n{msg}\n\n⚠️ Lưu ý: Kiểm tra tồn kho trong DB để thấy Lost Update!",
-                                "Kết quả (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        else
-                            MessageBox.Show($"Nhập kho thành công!\nĐã thêm {soLuong} đơn vị vào kho.",
-                                "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                        // Làm mới danh sách
-                        LoadDichVu();
-                        txtSoLuong.Text = "";
-                        cboDichVu.SelectedIndex = -1;
-                    }
-                    else if (isDeadlock)
-                    {
-                        MessageBox.Show($"Demo Xung đột:\n{msg}\n\n⚠️ Deadlock xảy ra do nhiều giao dịch cùng cập nhật!",
-                            "Deadlock (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
+                    if (isConflictDemo)
+                        MessageBox.Show($"Demo Xung đột - Nhập kho:\n{msg}\n\n⚠️ Lưu ý: Kiểm tra tồn kho trong DB để thấy Lost Update!",
+                            "Kết quả (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     else
-                    {
-                        MessageBox.Show($"Lỗi nhập kho: {msg}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
+                        MessageBox.Show($"Nhập kho thành công!\nĐã thêm {soLuong} đơn vị vào kho.",
+                            "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                    // Làm mới danh sách (refresh bảng)
+                    LoadDichVu();
+                    txtSoLuong.Text = "";
+                    cboDichVu.SelectedIndex = -1;
+                }
+                else if (isDeadlock)
+                {
+                    MessageBox.Show($"Demo Xung đột:\n{msg}\n\n⚠️ Deadlock xảy ra do nhiều giao dịch cùng cập nhật!",
+                        "Deadlock (demo xung đột)", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                else if (msg != null)
+                {
+                    // Có lỗi xảy ra
+                    MessageBox.Show($"Lỗi nhập kho: {msg}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
