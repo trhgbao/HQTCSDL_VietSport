@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using System.Drawing;
+using System.Data;
 using System.Data.SqlClient;
 using System.Windows.Forms;
 using System.Collections.Generic;
-using System.Linq; // Để dùng Any()
-using VietSportSystem.View.Staff.Receptionist; // Để dùng FormSelectService
+using System.Linq;
+using VietSportSystem.View.Staff.Receptionist;
 
 namespace VietSportSystem
 {
@@ -18,11 +19,13 @@ namespace VietSportSystem
         private Label lblDuration, lblTotalPrice;
         private TextBox txtNote, txtVoucher;
         private Label lblServiceList;
+        private Label lblGia;
 
-        // --- CÁC CHECKBOX DEMO (GỘP TỪ NAM & VU) ---
-        private CheckBox chkDemoPhantom;    // Demo Scenario 5 (Nam/Vu): Đặt sân trùng/quá hạn mức
-        private CheckBox chkDemoLostUpdate; // Demo Scenario 6 (Nam): Thuê dụng cụ sai tồn kho
-        private CheckBox chkFixVip;         // Demo Scenario 14 (Vu): Đặt phòng VIP (Double Booking)
+        // --- CÁC CHECKBOX DEMO ---
+        private CheckBox chkDemoDirectVsOnline; // Demo 1: Direct vs Online (Procedure Gộp)
+        private CheckBox chkDemoPhantom;        // Demo 5: Phantom Read
+        private CheckBox chkDemoLostUpdate;     // Demo 6: Lost Update
+        private CheckBox chkNonRepeatableDemo;  // Demo 3: Non-Repeatable Read
 
         // Variables
         private decimal currentTotalCourt = 0;
@@ -94,21 +97,20 @@ namespace VietSportSystem
 
             lblServiceList = new Label { Text = "Chưa chọn dịch vụ nào", Location = new Point(200, 220), AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Italic), ForeColor = Color.DimGray };
 
-            // [VU] Checkbox Fix VIP (Scenario 14)
-            chkFixVip = new CheckBox
+            // [DEMO 9] Non-Repeatable Read
+            chkNonRepeatableDemo = new CheckBox
             {
-                Text = "Bật FIX VIP (Scenario 14)",
+                Text = "Demo 3: Thay đổi giá (Non-Repeatable Read)",
                 Location = new Point(0, 260),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
-                ForeColor = Color.Purple
+                ForeColor = Color.OrangeRed
             };
 
             Label lblNote = new Label { Text = "Ghi chú:", Location = new Point(0, 290), AutoSize = true };
             txtNote = new TextBox { Location = new Point(0, 315), Width = 480, Height = 60, Multiline = true, BorderStyle = BorderStyle.FixedSingle };
 
-            pnlLeft.Controls.AddRange(new Control[] { lblSan, lblGia, grpTime, lblDVTitle, btnService, lblServiceList, chkFixVip, lblNote, txtNote });
-
+            pnlLeft.Controls.AddRange(new Control[] { lblSan, lblGia, grpTime, lblDVTitle, btnService, lblServiceList, chkNonRepeatableDemo, lblNote, txtNote });
 
             // ================= CỘT PHẢI =================
             Panel pnlRight = new Panel { Dock = DockStyle.Fill };
@@ -122,33 +124,42 @@ namespace VietSportSystem
             UIHelper.StyleButton(btnApply, false);
             btnApply.Click += (s, e) => MessageBox.Show("Mã giảm giá không tồn tại!");
 
-            // [NAM] Checkbox Demo Phantom Read (Scenario 5)
+            // [DEMO 1] Direct vs Online (Mới)
+            chkDemoDirectVsOnline = new CheckBox
+            {
+                Text = "Demo 1: Xung đột Trực tiếp vs Online",
+                Location = new Point(20, 160),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                ForeColor = Color.Blue
+            };
+
+            // [DEMO 5] Phantom Read
             chkDemoPhantom = new CheckBox
             {
-                Text = "Demo: Xung đột Đặt sân (Scen. 5)",
-                Location = new Point(20, 170),
+                Text = "Demo 5: Xung đột Đặt sân (Phantom Read)",
+                Location = new Point(20, 185),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 ForeColor = UIHelper.SecondaryColor
             };
 
-            // [NAM] Checkbox Demo Lost Update Inventory (Scenario 6)
+            // [DEMO 6] Lost Update
             chkDemoLostUpdate = new CheckBox
             {
-                Text = "Demo: Xung đột Tồn kho (Scen. 6)",
-                Location = new Point(20, 200),
+                Text = "Demo 6: Xung đột Tồn kho (Lost Update)",
+                Location = new Point(20, 210),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 ForeColor = Color.DarkRed
             };
 
-            Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 240), Size = new Size(270, 50) };
+            Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 250), Size = new Size(270, 50) };
             UIHelper.StyleButton(btnConfirm, true);
             btnConfirm.Click += BtnConfirm_Click;
 
-            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkDemoPhantom, chkDemoLostUpdate, btnConfirm });
+            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkDemoDirectVsOnline, chkDemoPhantom, chkDemoLostUpdate, btnConfirm });
 
-            // Add to Grid
             grid.Controls.Add(pnlLeft, 0, 0);
             grid.Controls.Add(pnlRight, 1, 0);
 
@@ -189,6 +200,13 @@ namespace VietSportSystem
 
         private void Time_Changed(object sender, EventArgs e) => CalculateTotal();
 
+        private string GetKhungGio(DateTime dt)
+        {
+            if (dt.DayOfWeek == DayOfWeek.Saturday || dt.DayOfWeek == DayOfWeek.Sunday) return "Cuối tuần";
+            if (dt.Hour >= 17 && dt.Hour <= 22) return "Giờ cao điểm";
+            return "Ngày thường";
+        }
+
         private void CalculateTotal()
         {
             if (dtpEnd.Value <= dtpStart.Value)
@@ -200,49 +218,164 @@ namespace VietSportSystem
             {
                 double hours = Math.Round((dtpEnd.Value - dtpStart.Value).TotalHours, 1);
                 if (hours < 0.5) { lblDuration.Text = "(Tối thiểu 30p)"; currentTotalCourt = 0; }
-                else { lblDuration.Text = $"({hours} giờ)"; currentTotalCourt = (decimal)hours * _sanInfo.GiaTien; }
+                else
+                {
+                    lblDuration.Text = $"({hours} giờ)";
+
+                    // --- LOGIC DEMO 9: NON-REPEATABLE READ ---
+                    decimal giaThue = 0;
+                    string maSanThuc = _sanInfo.TenSan.Contains("-") ? _sanInfo.TenSan.Split('-')[0].Trim() : _sanInfo.TenSan;
+                    string khungGio = GetKhungGio(dtpStart.Value);
+
+                    try
+                    {
+                        using (SqlConnection conn = DatabaseHelper.GetConnection())
+                        {
+                            conn.Open();
+                            using (SqlCommand cmd = new SqlCommand())
+                            {
+                                cmd.Connection = conn;
+
+                                if (chkNonRepeatableDemo.Checked)
+                                {
+                                    string sqlDemo = @"
+                                    SET TRANSACTION ISOLATION LEVEL READ COMMITTED; 
+                                    BEGIN TRANSACTION;
+                                    DECLARE @Gia1 decimal(18,0);
+                                    SELECT @Gia1 = DonGia FROM GiaThueSan WHERE MaCoSo=(SELECT MaCoSo FROM SanTheThao WHERE MaSan=@MaSan) AND LoaiSan=(SELECT LoaiSan FROM SanTheThao WHERE MaSan=@MaSan) AND KhungGio=@KhungGio;
+                                    
+                                    WAITFOR DELAY '00:00:10'; -- Chờ 10s để T2 update
+
+                                    DECLARE @Gia2 decimal(18,0);
+                                    SELECT @Gia2 = DonGia FROM GiaThueSan WHERE MaCoSo=(SELECT MaCoSo FROM SanTheThao WHERE MaSan=@MaSan) AND LoaiSan=(SELECT LoaiSan FROM SanTheThao WHERE MaSan=@MaSan) AND KhungGio=@KhungGio;
+                                    
+                                    COMMIT TRANSACTION;
+                                    SELECT CAST(@Gia1 AS VARCHAR) + '|' + CAST(@Gia2 AS VARCHAR); 
+                                    ";
+                                    cmd.CommandText = sqlDemo;
+                                    cmd.Parameters.AddWithValue("@MaSan", maSanThuc);
+                                    cmd.Parameters.AddWithValue("@KhungGio", khungGio);
+
+                                    object result = cmd.ExecuteScalar();
+                                    if (result != null)
+                                    {
+                                        string[] parts = result.ToString().Split('|');
+                                        decimal g1 = decimal.Parse(parts[0]);
+                                        decimal g2 = decimal.Parse(parts[1]);
+                                        giaThue = g2;
+                                        if (g1 != g2)
+                                        {
+                                            MessageBox.Show($"🔥 NON-REPEATABLE READ DETECTED!\nLần 1: {g1:N0}\nLần 2: {g2:N0}", "Demo Result");
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    giaThue = _sanInfo.GiaTien;
+                                }
+                            }
+                        }
+                    }
+                    catch { giaThue = _sanInfo.GiaTien; }
+
+                    lblGia.Text = $"Đơn giá: {giaThue:N0} VNĐ/giờ ({khungGio})";
+                    currentTotalCourt = (decimal)hours * giaThue;
+                }
             }
             lblTotalPrice.Text = (currentTotalCourt + currentTotalService).ToString("N0") + " VNĐ";
         }
 
         // =================================================================================
-        // MAIN LOGIC: XỬ LÝ ĐẶT SÂN (GỘP LOGIC NAM & VU)
+        // MAIN LOGIC: XỬ LÝ ĐẶT SÂN
         // =================================================================================
         private void BtnConfirm_Click(object sender, EventArgs e)
         {
             if (currentTotalCourt <= 0) { MessageBox.Show("Vui lòng chọn thời gian hợp lệ!"); return; }
             if (!SessionData.IsLoggedIn()) { MessageBox.Show("Vui lòng đăng nhập!"); return; }
 
+            // Nếu demo 9 đang chạy
+            if (chkNonRepeatableDemo.Checked)
+            {
+                MessageBox.Show("App sẽ treo 10 giây để tính giá (Demo 9).\nHãy Update SQL trong lúc này!", "Thông báo");
+                CalculateTotal();
+            }
+
             try
             {
                 string maSanThuc = _sanInfo.TenSan.Split('-')[0].Trim();
+                string? msg = "";
+                bool isSuccess = false;
 
                 // -----------------------------------------------------------
-                // 1. XỬ LÝ ĐẶT SÂN (SCENARIO 5 - PHANTOM READ) - [LOGIC NAM]
+                // 1. XỬ LÝ ĐẶT SÂN (SCENARIO 1, 5, NORMAL)
                 // -----------------------------------------------------------
-                string? msg;
-                if (chkDemoPhantom.Checked)
+
+                if (chkDemoDirectVsOnline.Checked)
                 {
-                    // Chạy Stored Procedure gây lỗi (Read Committed)
+                    // === SCENARIO 1: TRỰC TIẾP vs ONLINE (Sử dụng Procedure GỘP) ===
+                    using (SqlConnection conn = DatabaseHelper.GetConnection())
+                    {
+                        conn.Open();
+                        // Gọi Procedure mới gộp: sp_DatSan_Scenario1
+                        using (SqlCommand cmd = new SqlCommand("sp_DatSan_Scenario1", conn))
+                        {
+                            cmd.CommandType = CommandType.StoredProcedure;
+
+                            string maPhieuRandom = "P_D1_" + DateTime.Now.Ticks.ToString().Substring(10);
+
+                            cmd.Parameters.AddWithValue("@MaKhachHang", SessionData.CurrentUserID);
+                            cmd.Parameters.AddWithValue("@MaSan", maSanThuc);
+                            cmd.Parameters.AddWithValue("@GioBatDau", dtpStart.Value);
+                            cmd.Parameters.AddWithValue("@GioKetThuc", dtpEnd.Value);
+                            cmd.Parameters.AddWithValue("@MaPhieuDat", maPhieuRandom);
+
+                            // QUAN TRỌNG: @IsFix = 0 để chạy Mode Lỗi (Read Committed) cho Demo
+                            // Nếu muốn test Fix, bạn có thể sửa số này thành 1 (hoặc thêm checkbox khác)
+                            cmd.Parameters.AddWithValue("@IsFix", 0);
+
+                            using (SqlDataReader reader = cmd.ExecuteReader())
+                            {
+                                if (reader.Read())
+                                {
+                                    int ketQua = Convert.ToInt32(reader["KetQua"]);
+                                    msg = reader["ThongBao"].ToString();
+                                    isSuccess = (ketQua == 1);
+                                }
+                            }
+                        }
+                    }
+
+                    if (isSuccess)
+                        MessageBox.Show(msg, "Kết quả Demo 1 (Mode Lỗi)", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    else
+                    {
+                        MessageBox.Show(msg, "Đặt sân thất bại (Demo 1)", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+                else if (chkDemoPhantom.Checked)
+                {
+                    // === SCENARIO 5: PHANTOM READ ===
                     msg = DatabaseHelper.DatSan_GayXungDot(SessionData.CurrentUserID, maSanThuc, dtpStart.Value, dtpEnd.Value);
+
+                    if (!string.IsNullOrEmpty(msg))
+                    {
+                        bool isFailure = msg.StartsWith("Thất bại", StringComparison.OrdinalIgnoreCase);
+                        if (!isFailure)
+                            MessageBox.Show(msg, "Kết quả (Demo Phantom Read)", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        else
+                        {
+                            MessageBox.Show(msg, "Không thể đặt sân", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                    }
                 }
                 else
                 {
-                    // Chạy Stored Procedure chuẩn (Serializable)
+                    // === BÌNH THƯỜNG / AN TOÀN ===
                     msg = DatabaseHelper.DatSan_KiemTraGioiHan(SessionData.CurrentUserID, maSanThuc, dtpStart.Value, dtpEnd.Value, "Online");
-                }
 
-                if (!string.IsNullOrEmpty(msg))
-                {
-                    // Nếu là thông báo từ SP Gây lỗi (thường trả về string 'Thành công...' hoặc 'Thất bại...')
-                    bool isFailure = msg.StartsWith("Thất bại", StringComparison.OrdinalIgnoreCase);
-
-                    if (chkDemoPhantom.Checked && !isFailure)
-                    {
-                        // Demo thành công (nghĩa là đã đặt được dù có thể sai logic) -> Cho đi tiếp
-                        MessageBox.Show(msg, "Kết quả (Demo Phantom Read)", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                    else
+                    if (!string.IsNullOrEmpty(msg))
                     {
                         // Lỗi thật hoặc Demo thất bại -> Dừng
                         MessageBox.Show(msg, "Không thể đặt sân", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -251,7 +384,7 @@ namespace VietSportSystem
                 }
 
                 // -----------------------------------------------------------
-                // 2. XỬ LÝ DỊCH VỤ (SCENARIO 6 - LOST UPDATE) - [LOGIC NAM]
+                // 2. XỬ LÝ DỊCH VỤ (SCENARIO 6 - LOST UPDATE)
                 // -----------------------------------------------------------
                 foreach (var item in _selectedServices)
                 {
@@ -261,28 +394,20 @@ namespace VietSportSystem
                     string? msgDV;
                     if (chkDemoLostUpdate.Checked)
                     {
-                        // Gọi SP gây lỗi (Không khóa)
                         msgDV = DatabaseHelper.ThueDungCu_GayXungDot(item.MaDV, item.SoLuong);
-
-                        // Hiển thị thông báo demo nhưng không return (để cho phép sai sót xảy ra)
                         if (!string.IsNullOrEmpty(msgDV))
-                        {
                             MessageBox.Show($"[Demo Lost Update] {item.TenDV}:\n{msgDV}", "Kết quả Trừ kho", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
                     }
                     else
                     {
-                        // Gọi SP chuẩn (Có UPDLOCK)
                         msgDV = DatabaseHelper.ThueDungCu(item.MaDV, item.SoLuong);
                         if (!string.IsNullOrEmpty(msgDV))
-                        {
                             MessageBox.Show($"Lỗi trừ kho {item.TenDV}: {msgDV}", "Lỗi kho", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        }
                     }
                 }
 
                 // -----------------------------------------------------------
-                // 3. XỬ LÝ VIP CONTEXT (SCENARIO 14) - [LOGIC VU]
+                // 3. XỬ LÝ VIP CONTEXT (Đơn giản hóa, bỏ Scenario 14)
                 // -----------------------------------------------------------
                 bool hasVip = _selectedServices.Any(s => string.Equals(s.MaDV, "DV_VIP", StringComparison.OrdinalIgnoreCase));
                 if (hasVip)
@@ -291,7 +416,6 @@ namespace VietSportSystem
                     BookingContext.VipSelected = true;
                     BookingContext.VipStart = dtpEnd.Value;
                     BookingContext.VipEnd = dtpEnd.Value.AddMinutes(30);
-                    BookingContext.VipUseFix = chkFixVip.Checked; // Checkbox Fix của Vu
                 }
                 else
                 {
