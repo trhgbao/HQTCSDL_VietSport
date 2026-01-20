@@ -183,7 +183,7 @@ CREATE TABLE PhieuDatSan (
     MaNhanVien VARCHAR(10) NULL, 
     GioBatDau DATETIME NOT NULL,
     GioKetThuc DATETIME NOT NULL,
-    TrangThaiThanhToan NVARCHAR(50) NOT NULL DEFAULT N'Chưa thanh toán' CHECK (TrangThaiThanhToan IN (N'Chưa thanh toán', N'Đã cọc', N'Đã thanh toán')),
+    TrangThaiThanhToan NVARCHAR(50) NOT NULL DEFAULT N'Chưa thanh toán' CHECK (TrangThaiThanhToan IN (N'Chưa thanh toán', N'Đã cọc', N'Đã thanh toán', N'Đã hủy')),
     KenhDat NVARCHAR(20) NOT NULL CHECK (KenhDat IN ('Online', N'Trực tiếp')),
     DaHuy BIT NOT NULL DEFAULT 0, -- Cột quan trọng để xử lý Lost Update
     CONSTRAINT CK_PhieuDat_ThoiGian CHECK (GioKetThuc > GioBatDau),

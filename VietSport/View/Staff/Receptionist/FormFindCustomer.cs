@@ -12,6 +12,8 @@ namespace VietSportSystem
         public string SelectedTenKH { get; private set; }
         public string SelectedSDT { get; private set; }
 
+        public string SelectedCMND { get; private set; }
+
         private DataGridView grid;
         private TextBox txtSearch;
 
@@ -68,6 +70,7 @@ namespace VietSportSystem
                 SelectedMaKH = grid.Rows[e.RowIndex].Cells["MaKhachHang"].Value.ToString();
                 SelectedTenKH = grid.Rows[e.RowIndex].Cells["HoTen"].Value.ToString();
                 SelectedSDT = grid.Rows[e.RowIndex].Cells["SoDienThoai"].Value.ToString();
+                SelectedCMND = grid.Rows[e.RowIndex].Cells["CMND"].Value.ToString();
 
                 this.DialogResult = DialogResult.OK;
                 this.Close();

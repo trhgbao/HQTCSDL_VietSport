@@ -10,7 +10,7 @@ namespace VietSportSystem
         // public static string ServerName = @"TOXICTILLTHEEND\MSSQLSERVER01"; 
         // public static string ServerName = @".\MSSQLSERVER01";
         // public static string ServerName = @"localhost\MSSQL_NEW"; 
-        public static string ServerName = @"DESKTOP-KLE6SON";
+        public static string ServerName = @"localhost\MSSQL_NEW";
 
         public static string DbName = "VietSportDB";
 

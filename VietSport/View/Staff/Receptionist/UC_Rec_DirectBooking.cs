@@ -113,6 +113,22 @@ namespace VietSportSystem
             }
         }
 
+        private void BtnFind_Click(object sender, EventArgs e)
+        {
+            FormFindCustomer frm = new FormFindCustomer();
+            if (frm.ShowDialog() == DialogResult.OK)
+            {
+                _selectedMaKH = frm.SelectedMaKH;
+                txtHoTen.Text = frm.SelectedTenKH;
+                txtSDT.Text = frm.SelectedSDT;
+
+                txtCMND.Text = frm.SelectedCMND;
+
+                txtHoTen.Enabled = false;
+                txtCMND.Enabled = false;
+            }
+        }
+
         private TextBox CreateInput(Panel p, string placeholder, int y)
         {
             TextBox txt = new TextBox { Location = new Point(50, y), Width = 700, Font = new Font("Segoe UI", 11) };
@@ -122,18 +138,7 @@ namespace VietSportSystem
         }
 
         // --- LOGIC 1: TÌM TÀI KHOẢN ---
-        private void BtnFind_Click(object sender, EventArgs e)
-        {
-            FormFindCustomer frm = new FormFindCustomer();
-            if (frm.ShowDialog() == DialogResult.OK)
-            {
-                _selectedMaKH = frm.SelectedMaKH;
-                txtHoTen.Text = frm.SelectedTenKH;
-                txtSDT.Text = frm.SelectedSDT;
-                txtCMND.Text = "Đã có trong hệ thống";
-                txtHoTen.Enabled = false; // Khóa lại không cho sửa
-            }
-        }
+
 
         // --- LOGIC 2: KIỂM TRA SÂN TRỐNG ---
         private void BtnCheck_Click(object sender, EventArgs e)

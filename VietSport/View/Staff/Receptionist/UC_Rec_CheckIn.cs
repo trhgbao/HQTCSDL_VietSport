@@ -44,7 +44,9 @@ namespace VietSportSystem
                 BackColor = Color.LightBlue,
                 Cursor = Cursors.Hand
             };
-            // btnDemoCheckIn.Click += ... (Logic cũ của bạn)
+            btnDemoCheckIn.Click += (s, e) => UpdateStatus("DEMO_RACE", "Check-in");
+
+            pnlSearch.Controls.Add(btnDemoCheckIn);
 
             Button btnResetDemo = new Button
             {
@@ -102,7 +104,8 @@ namespace VietSportSystem
                         JOIN KhachHang kh ON p.MaKhachHang = kh.MaKhachHang
                         JOIN SanTheThao s ON p.MaSan = s.MaSan
                         WHERE (kh.HoTen LIKE @Key OR p.MaPhieuDat LIKE @Key)
-                        AND p.DaHuy = 0  -- Chỉ lấy phiếu chưa hủy
+                        AND p.DaHuy = 0 
+                        AND p.TrangThaiThanhToan = N'Chưa thanh toán'
                         AND (@Key != '' OR CONVERT(date, p.GioBatDau) = CONVERT(date, GETDATE()))";
 
                     using (SqlCommand cmd = new SqlCommand(sql, conn))
@@ -181,33 +184,66 @@ namespace VietSportSystem
         // --- HÀM XỬ LÝ (Sửa Logic Hủy để gọi Proc Demo) ---
         private async void UpdateStatus(string maPhieu, string action)
         {
-            // 1. Nếu là CHECK-IN: Chạy bình thường (Giữ logic cũ)
+            // ==========================================================
+            // TRƯỜNG HỢP 1: BẤM NÚT CHECK-IN (LỄ TÂN)
+            // ==========================================================
             if (action == "Check-in")
             {
-                // Code cũ của bạn (giản lược để tập trung vào demo)
-                MessageBox.Show("Check-in thành công!");
-                return;
-            }
-
-            // 2. Nếu là HỦY: Chạy Logic Demo
-            if (action == "Đã hủy")
-            {
-                // Kiểm tra checkbox để truyền Bit:
-                // Tích -> @IsFix = 0 (Rollback - Gây lỗi)
-                // Không tích -> @IsFix = 1 (Commit - Chạy thật)
-                int isFix = chkDemoMode.Checked ? 0 : 1;
-                string msgMode = chkDemoMode.Checked ? "Demo (Sẽ Rollback)" : "Chạy thật (Sẽ Commit)";
-
-                if (MessageBox.Show($"Xác nhận hủy phiếu {maPhieu}?\nChế độ: {msgMode}", "Xác nhận", MessageBoxButtons.YesNo) == DialogResult.No) return;
+                // Kiểm tra xem có đang chọn phiếu nào không
+                if (string.IsNullOrEmpty(maPhieu)) return;
 
                 try
                 {
-                    // Chạy ASYNC để không đơ máy người bấm, cho phép máy kia kịp reload
+                    // Thông báo trên UI để biết đang chạy
+                    // (Vì nếu gặp tranh chấp, app sẽ quay quay khoảng 10s)
+                    MessageBox.Show("Đang xử lý Check-in... Vui lòng đợi hệ thống phản hồi.", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
                     await Task.Run(() =>
                     {
                         using (SqlConnection conn = DatabaseHelper.GetConnection())
                         {
                             conn.Open();
+                            // Gọi Procedure Check-in vừa tạo ở Bước 1
+                            using (SqlCommand cmd = new SqlCommand("sp_Demo_Rec_CheckIn", conn))
+                            {
+                                cmd.CommandType = CommandType.StoredProcedure;
+                                cmd.Parameters.AddWithValue("@MaPhieu", maPhieu);
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                    });
+
+                    // Nếu chạy đến đây là thành công
+                    MessageBox.Show($"✅ Check-in thành công phiếu {maPhieu}!", "Thành công");
+                    LoadBookings(txtSearch.Text); // Tải lại danh sách
+                }
+                catch (Exception ex) // Bắt lỗi từ SQL (ví dụ lỗi 50005 - Phiếu đã hủy)
+                {
+                    MessageBox.Show($"❌ LỖI CHECK-IN:\n{ex.Message}", "Cảnh báo Race Condition", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    LoadBookings(txtSearch.Text); // Tải lại để thấy trạng thái mới
+                }
+                return;
+            }
+
+            // ==========================================================
+            // TRƯỜNG HỢP 2: BẤM NÚT HỦY (ADMIN/HỆ THỐNG)
+            // ==========================================================
+            if (action == "Đã hủy")
+            {
+                // 0: Demo (Sẽ Rollback - Gây tranh chấp), 1: Thật (Sẽ Commit)
+                int isFix = chkDemoMode.Checked ? 0 : 1;
+                string msgMode = chkDemoMode.Checked ? "[CHẾ ĐỘ DEMO] (Sẽ Rollback sau 10s)" : "[CHẾ ĐỘ THẬT]";
+
+                if (MessageBox.Show($"Bạn muốn hủy phiếu {maPhieu}?\n{msgMode}", "Xác nhận hủy", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
+
+                try
+                {
+                    await Task.Run(() =>
+                    {
+                        using (SqlConnection conn = DatabaseHelper.GetConnection())
+                        {
+                            conn.Open();
+                            // Gọi Procedure Hủy vừa tạo ở Bước 1
                             SqlCommand cmd = new SqlCommand("sp_HuyDatSan_Demo", conn);
                             cmd.CommandType = CommandType.StoredProcedure;
                             cmd.Parameters.AddWithValue("@MaPhieuDat", maPhieu);
@@ -216,13 +252,12 @@ namespace VietSportSystem
                         }
                     });
 
-                    // Thông báo kết quả
                     if (isFix == 0)
-                        MessageBox.Show($"[Demo] Đã Rollback phiếu {maPhieu} về trạng thái cũ.");
+                        MessageBox.Show($"[Demo Xong] Transaction Hủy đã Rollback.\nDữ liệu trở về như cũ.", "Kết quả Demo");
                     else
-                        MessageBox.Show($"Đã Hủy phiếu {maPhieu} thành công.");
+                        MessageBox.Show($"Đã hủy phiếu {maPhieu} vĩnh viễn.", "Kết quả");
 
-                    LoadBookings(txtSearch.Text); // Reload lại list
+                    LoadBookings(txtSearch.Text);
                 }
                 catch (Exception ex) { MessageBox.Show("Lỗi: " + ex.Message); }
             }

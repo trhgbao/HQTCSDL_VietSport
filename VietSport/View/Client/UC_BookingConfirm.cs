@@ -26,6 +26,7 @@ namespace VietSportSystem
         private CheckBox chkDemoPhantom;        // Demo 5: Phantom Read
         private CheckBox chkDemoLostUpdate;     // Demo 6: Lost Update
         private CheckBox chkNonRepeatableDemo;  // Demo 3: Non-Repeatable Read
+        private CheckBox chkDemoBaoTri;
 
         // Variables
         private decimal currentTotalCourt = 0;
@@ -73,7 +74,7 @@ namespace VietSportSystem
             // ================= CỘT TRÁI =================
             Panel pnlLeft = new Panel { Dock = DockStyle.Fill };
             Label lblSan = new Label { Text = $"SÂN: {_sanInfo.TenSan}", Font = new Font("Segoe UI", 13, FontStyle.Bold), AutoSize = true, ForeColor = UIHelper.PrimaryColor };
-            Label lblGia = new Label { Text = $"Đơn giá: {_sanInfo.GiaTien:N0} VNĐ/giờ", Location = new Point(0, 30), AutoSize = true, Font = new Font("Segoe UI", 11, FontStyle.Italic) };
+            lblGia = new Label { Text = $"Đơn giá: {_sanInfo.GiaTien:N0} VNĐ/giờ", Location = new Point(0, 30), AutoSize = true, Font = new Font("Segoe UI", 11, FontStyle.Italic) };
 
             GroupBox grpTime = new GroupBox { Text = "Thời gian đặt", Location = new Point(0, 70), Size = new Size(480, 100), Font = new Font("Segoe UI", 10) };
             Label lblS = new Label { Text = "Bắt đầu:", Location = new Point(20, 35), AutoSize = true };
@@ -134,6 +135,19 @@ namespace VietSportSystem
                 ForeColor = Color.Blue
             };
 
+            // [DEMO 2] Non-Repeatable 
+            chkDemoBaoTri = new CheckBox
+            {
+                Text = "Demo 2: Đặt sân vs Bảo trì (Non-Repeatable)",
+                // Chỉnh lại toạ độ Y của các checkbox khác nếu cần để không đè lên nhau
+                Location = new Point(20, 235),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                ForeColor = Color.Purple // Màu tím để phân biệt
+            };
+
+
+
             // [DEMO 5] Phantom Read
             chkDemoPhantom = new CheckBox
             {
@@ -154,11 +168,11 @@ namespace VietSportSystem
                 ForeColor = Color.DarkRed
             };
 
-            Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 250), Size = new Size(270, 50) };
+            Button btnConfirm = new Button { Text = "XÁC NHẬN ĐẶT", Location = new Point(20, 280), Size = new Size(270, 50) };
             UIHelper.StyleButton(btnConfirm, true);
             btnConfirm.Click += BtnConfirm_Click;
 
-            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkDemoDirectVsOnline, chkDemoPhantom, chkDemoLostUpdate, btnConfirm });
+            pnlRight.Controls.AddRange(new Control[] { lblPayTitle, lblTotalPrice, lblVoucher, txtVoucher, btnApply, chkDemoDirectVsOnline, chkDemoBaoTri, chkDemoPhantom, chkDemoLostUpdate, btnConfirm });
 
             grid.Controls.Add(pnlLeft, 0, 0);
             grid.Controls.Add(pnlRight, 1, 0);
@@ -351,6 +365,56 @@ namespace VietSportSystem
                     {
                         MessageBox.Show(msg, "Đặt sân thất bại (Demo 1)", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
+                    }
+                }
+                else if (chkDemoBaoTri.Checked)
+                {
+                    MessageBox.Show("Hệ thống sẽ dừng 10s để kiểm tra trạng thái sân.\n\n👉 Trong lúc này, hãy dùng máy khác set trạng thái sân thành 'Bảo trì'!",
+                                    "Hướng dẫn Demo 2", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                    using (SqlConnection conn = DatabaseHelper.GetConnection())
+                    {
+                        conn.Open();
+                        using (SqlCommand cmd = new SqlCommand("sp_Demo_DatSan", conn))
+                        {
+                            cmd.CommandType = CommandType.StoredProcedure;
+
+                            // Tạo mã phiếu ngẫu nhiên
+                            string maPhieu = "D2" + DateTime.Now.ToString("HHmmss");
+
+                            cmd.Parameters.AddWithValue("@MaPhieu", maPhieu);
+                            cmd.Parameters.AddWithValue("@MaKH", SessionData.CurrentUserID);
+                            cmd.Parameters.AddWithValue("@MaSan", maSanThuc);
+                            cmd.Parameters.AddWithValue("@GioBatDau", dtpStart.Value);
+                            cmd.Parameters.AddWithValue("@GioKetThuc", dtpEnd.Value);
+
+                            try
+                            {
+                                // Thực thi
+                                cmd.ExecuteNonQuery();
+
+                                // Nếu chạy qua dòng này nghĩa là không bị lỗi -> Thành công
+                                MessageBox.Show("Đặt sân thành công! (Trạng thái sân bình thường)", "Kết quả", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                                // Chuyển trang thanh toán (Logic cũ)
+                                decimal totalForDemo = currentTotalCourt + currentTotalService;
+                                _mainForm.LoadView(new UC_Payment(_mainForm, null, totalForDemo));
+                                return; // Return luôn để không chạy phần tính dịch vụ bên dưới (Demo này chỉ test sân)
+                            }
+                            catch (SqlException sqlEx)
+                            {
+                                // Bắt lỗi 50001 hoặc 50002 từ SQL ném ra
+                                if (sqlEx.Number == 50002 || sqlEx.Message.Contains("Bảo trì"))
+                                {
+                                    MessageBox.Show($"❌ PHÁT HIỆN XUNG ĐỘT (Non-Repeatable Read):\n{sqlEx.Message}", "Demo 2 Thành công", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                    return; // Dừng lại, không chuyển trang
+                                }
+                                else
+                                {
+                                    throw; // Lỗi khác thì ném tiếp
+                                }
+                            }
+                        }
                     }
                 }
                 else if (chkDemoPhantom.Checked)
